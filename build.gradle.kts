@@ -25,5 +25,22 @@ tasks.test {
     useJUnitPlatform()
 }
 kotlin {
-    jvmToolchain(20)
+    jvmToolchain(11)
+}
+
+val fatJar = task("fatJar", type = Jar::class) {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes["Implementation-Title"] = "Gradle Jar File Example"
+        attributes["Implementation-Version"] = version
+        attributes["Main-Class"] = "MainKt"
+    }
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+    with(tasks.jar.get() as CopySpec)
+}
+
+tasks {
+    "build" {
+        dependsOn(fatJar)
+    }
 }

@@ -1,12 +1,8 @@
-#! /bin/sh
-
 ./gradlew clean build
 
-JAR_NAME=myJar.jar
-
+JAR_NAME=drone-1.0-SNAPSHOT.jar
 ssh drone@openhd 'mkdir -p ~/helloworld'
 
 scp -r ./build/libs/${JAR_NAME} drone@openhd:~/helloworld/
 
-ssh drone@openhd 'bash -s' < ./install.sh
-exit
+cat install.sh | ssh drone@openhd 'bash -s'
