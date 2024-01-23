@@ -4,7 +4,16 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e288fcce-e1c5-45e8-98d0-c9bdbb37cdbe" name="Changes" comment="feat: add mavsdk server and better example" />
+    <list default="true" id="e288fcce-e1c5-45e8-98d0-c9bdbb37cdbe" name="Changes" comment="feat: add mavsdk server and better example">
+      <change afterPath="$PROJECT_DIR$/src/main/kotlin/drone/DroneController.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/main/kotlin/drone/DroneState.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/main/kotlin/drone/DroneStatus.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/main/kotlin/drone/MavsdkHandler.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/main/kotlin/supabase/SupabaseMessageHandler.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/Main.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/Main.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/examples/DroneCommunication.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/examples/DroneCommunication.kt" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -51,6 +60,14 @@
       </state>
     </system>
   </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Kotlin Class" />
+        <option value="Kotlin Data Class" />
+      </list>
+    </option>
+  </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
@@ -89,6 +106,10 @@
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\Larsk\IdeaProjects\drone\mavsdk_server" />
+    </key>
+    <key name="MoveKotlinTopLevelDeclarationsDialog.RECENTS_KEY">
+      <recent name="supabase" />
+      <recent name="drone" />
     </key>
   </component>
   <component name="RunManager" selected="Kotlin.MainKt">
@@ -198,7 +219,7 @@
       <option name="presentableId" value="Default" />
       <updated>1705934106558</updated>
       <workItem from="1705934107704" duration="2141000" />
-      <workItem from="1706037600795" duration="2088000" />
+      <workItem from="1706037600795" duration="4955000" />
     </task>
     <task id="LOCAL-00001" summary="feat: add mavsdk server and better example">
       <option name="closed" value="true" />
@@ -216,7 +237,15 @@
       <option name="project" value="LOCAL" />
       <updated>1706039564965</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="feat: add mavsdk server and better example">
+      <option name="closed" value="true" />
+      <created>1706039912341</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1706039912341</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
