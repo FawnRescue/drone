@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") version "1.9.21"
+    kotlin("plugin.serialization") version "1.9.21"
 }
 
 group = "org.example"
@@ -19,6 +20,9 @@ dependencies {
     //add ktor client engine (if you don't already have one, see https://ktor.io/docs/http-client-engines.html for all engines)
     //e.g. the CIO engine
     implementation("io.ktor:ktor-client-cio:2.3.7")
+    //add kotlinx serialization
+    implementation("io.ktor:ktor-client-serialization:2.3.7")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
 }
 
 tasks.test {

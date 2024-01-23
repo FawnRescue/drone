@@ -1,17 +1,18 @@
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.realtime.*
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlin.time.Duration.Companion.seconds
 import io.mavsdk.System
-import io.mavsdk.mission.Mission.MissionItem
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.forEach
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.Serializable
+import kotlin.time.Duration.Companion.seconds
+
+@Serializable
+data class PresenceState(val username: String)
 
 @OptIn(DelicateCoroutinesApi::class)
-fun main() {
+suspend fun main() {
 
     val supabase = createSupabaseClient(
         supabaseUrl = "https://irvsopidchmqfxbdpxqt.supabase.co",
@@ -24,15 +25,27 @@ fun main() {
     }
 
     val roomOne = supabase.channel("command_test")
+    val roomTwo = supabase.channel("command_test1")
+    val roomThree = supabase.channel("command_test2")
     val presenceFlow: Flow<PresenceAction> = roomOne.presenceChangeFlow()
-    val flow = presenceFlow
-        .onEach {
-            println(it.joins) //You can also use it.decodeJoinsAs<YourType>()
-            println(it.leaves) //You can also use it.decodeLeavesAs<YourType>()
-        }
+
+    println("Subscribing...")
+    roomOne.subscribe(blockUntilSubscribed = true)
+    roomTwo.subscribe(blockUntilSubscribed = true)
+    roomThree.subscribe(blockUntilSubscribed = true)
+    println("Subscribed!")
+    roomOne.track(PresenceState(username = "John"))
+    println("Collecting...")
+    presenceFlow.collect {
+        println("Leave: " + it.leaves)
+        println("Join: " + it.joins)
+    }
+    println("Collected!")
 
 
+    roomOne.broadcast("test", PresenceState(username = "test"))
     runBlocking {
+
         val drone = System()
 
         drone.telemetry.flightMode
