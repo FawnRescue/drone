@@ -4,15 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e288fcce-e1c5-45e8-98d0-c9bdbb37cdbe" name="Changes" comment="feat: add mavsdk server and better example">
-      <change afterPath="$PROJECT_DIR$/src/main/kotlin/drone/DroneController.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/kotlin/drone/DroneState.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/kotlin/drone/DroneStatus.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/kotlin/drone/MavsdkHandler.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/kotlin/supabase/SupabaseMessageHandler.kt" afterDir="false" />
+    <list default="true" id="e288fcce-e1c5-45e8-98d0-c9bdbb37cdbe" name="Changes" comment="feat: add skeleton for the drone controller">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/kotlin/Main.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/Main.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/kotlin/examples/DroneCommunication.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/examples/DroneCommunication.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/drone/MavsdkHandler.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/drone/MavsdkHandler.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/supabase/SupabaseMessageHandler.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/supabase/SupabaseMessageHandler.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -219,7 +215,8 @@
       <option name="presentableId" value="Default" />
       <updated>1705934106558</updated>
       <workItem from="1705934107704" duration="2141000" />
-      <workItem from="1706037600795" duration="4955000" />
+      <workItem from="1706037600795" duration="5185000" />
+      <workItem from="1706087518211" duration="966000" />
     </task>
     <task id="LOCAL-00001" summary="feat: add mavsdk server and better example">
       <option name="closed" value="true" />
@@ -245,7 +242,15 @@
       <option name="project" value="LOCAL" />
       <updated>1706039912341</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="feat: add skeleton for the drone controller">
+      <option name="closed" value="true" />
+      <created>1706052399965</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1706052399965</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -265,6 +270,7 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="fix: project structure" />
     <MESSAGE value="feat: add mavsdk server and better example" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: add mavsdk server and better example" />
+    <MESSAGE value="feat: add skeleton for the drone controller" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: add skeleton for the drone controller" />
   </component>
 </project>

@@ -13,4 +13,6 @@ fun main(): Unit = runBlocking {
     // Additional main logic
     mavsdk.join()
     supabase.join()
+
+    controller.supabaseHandler.cleanup()
 }
