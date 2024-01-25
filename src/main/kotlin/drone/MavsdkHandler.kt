@@ -16,7 +16,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         // Report status and errors to the controller
         println("The drone is ready to fly!")
         (1..10).forEach {
-            sleep(10)
+            sleep(1000)
             sendDroneStatusToBackend(DroneStatus(DroneState.IN_FLIGHT, it, "Berlin"))
         }
         sendDroneStatusToBackend(DroneStatus(DroneState.IDLE, 100, "Berlin"))

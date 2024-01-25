@@ -24,9 +24,6 @@ dependencies {
     //add kotlinx serialization
     implementation("io.ktor:ktor-client-serialization:2.3.7")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
-    implementation("dev.bluefalcon:blue-falcon-rpi:1.0.0")
-    implementation("dev.bluefalcon:blue-falcon:1.0.0")
-    implementation("net.sf.bluecove:bluecove:2.1.0")
 }
 
 tasks.test {
