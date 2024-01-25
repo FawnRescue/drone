@@ -26,7 +26,7 @@ class SupabaseMessageHandler(private val controller: DroneController) {
             reconnectDelay = 5.seconds
         }
     }
-    val channel = supabase.channel("channel_test")
+    val channel = supabase.channel(controller.token)
     var isSubscribed = false
 
     fun startListening() = CoroutineScope(Dispatchers.IO).launch {

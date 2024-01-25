@@ -7,10 +7,10 @@ fun main(): Unit = runBlocking {
     val credentialManager = CredentialManager()
 
     if (!credentialManager.areCredentialsAvailable()) {
-        //TODO
+        TODO("Get tokens from App")
     }
-    sleep(20000)
-    val controller = DroneController()
+
+    val controller = DroneController(token = credentialManager.token!!, key = credentialManager.key!!)
 
     // Start Supabase message handling
     val supabase = controller.supabaseHandler.startListening()
