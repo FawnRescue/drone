@@ -1,5 +1,6 @@
 package drone
 
+import io.mavsdk.System
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -11,15 +12,38 @@ import supabase.SupabaseMessageHandler
 import java.lang.Thread.sleep
 
 class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
-    fun startCommunicating() = CoroutineScope(Dispatchers.IO).launch {
-        // Communication logic with MAVSDK
-        // Report status and errors to the controller
-        println("The drone is ready to fly!")
-        (1..10).forEach {
-            sleep(1000)
-            sendDroneStatusToBackend(DroneStatus(DroneState.IN_FLIGHT, it, "Berlin"))
+    private var drone = System("172.19.40.205", 50051)
+    private var armed: Boolean? = null
+    private var battery: Float? = null
+    private var location: String? = null
+
+    private fun readDroneStatus() = CoroutineScope(Dispatchers.IO).launch {
+        drone.telemetry.armed.doOnError { reconnect() }.forEach {
+            armed = it
         }
-        sendDroneStatusToBackend(DroneStatus(DroneState.IDLE, 100, "Berlin"))
+        drone.telemetry.battery.doOnError { reconnect() }.forEach {
+            battery = it.remainingPercent
+        }
+        drone.telemetry.position.doOnError { reconnect() }.forEach {
+            location = "\n${it.latitudeDeg.toFloat()},\n ${it.longitudeDeg.toFloat()}"
+        }
+    }
+
+    fun startCommunicating() = CoroutineScope(Dispatchers.IO).launch {
+        readDroneStatus()
+        while (true) {
+            val status = DroneStatus(
+                state = when (armed) {
+                    true -> DroneState.IN_FLIGHT
+                    false -> DroneState.IDLE
+                    null -> DroneState.NOT_CONNECTED
+                },
+                battery = battery,
+                location = location
+            )
+            sendDroneStatusToBackend(status)
+            sleep(100)
+        }
     }
 
     fun executeCommand(command: String) {
@@ -29,5 +53,12 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private suspend fun sendDroneStatusToBackend(data: DroneStatus) {
         // Logic to send data directly to Supabase
         supabaseHandler.sendDroneStatus(data)
+    }
+
+    private fun reconnect() {
+        println("Connection lost. Attempting to reconnect...")
+        // Reinitialize the drone object or perform necessary steps to reconnect
+        drone = System("172.19.40.205", 50051)
+        readDroneStatus()
     }
 }
