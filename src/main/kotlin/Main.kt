@@ -4,11 +4,11 @@ import kotlinx.coroutines.runBlocking
 import java.lang.Thread.sleep
 
 fun main(): Unit = runBlocking {
-    val credentialManager = CredentialManager()
+    lateinit var credentialManager: CredentialManager
+    do {
+        credentialManager = CredentialManager()
+    } while (!credentialManager.areCredentialsAvailable())
 
-    if (!credentialManager.areCredentialsAvailable()) {
-        TODO("Get tokens from App")
-    }
 
     val controller = DroneController(token = credentialManager.token!!, key = credentialManager.key!!)
 

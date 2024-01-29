@@ -4,11 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e288fcce-e1c5-45e8-98d0-c9bdbb37cdbe" name="Changes" comment="fix: remove bluetooth">
+    <list default="true" id="e288fcce-e1c5-45e8-98d0-c9bdbb37cdbe" name="Changes" comment="feat: read drone status">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/kotlin/drone/DroneState.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/drone/DroneState.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/kotlin/drone/DroneStatus.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/drone/DroneStatus.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/kotlin/drone/MavsdkHandler.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/drone/MavsdkHandler.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/Main.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/Main.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/kotlin/credentials/CredentialManager.kt" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/kotlin/credentials/CredentialManager.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -207,7 +207,8 @@
       <workItem from="1706098605149" duration="1079000" />
       <workItem from="1706099951037" duration="6743000" />
       <workItem from="1706187007433" duration="11380000" />
-      <workItem from="1706392238331" duration="2876000" />
+      <workItem from="1706392238331" duration="3417000" />
+      <workItem from="1706558757928" duration="2618000" />
     </task>
     <task id="LOCAL-00001" summary="feat: add mavsdk server and better example">
       <option name="closed" value="true" />
@@ -265,7 +266,15 @@
       <option name="project" value="LOCAL" />
       <updated>1706220914444</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="feat: read drone status">
+      <option name="closed" value="true" />
+      <created>1706397116982</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1706397116982</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -290,6 +299,7 @@
     <MESSAGE value="feat: added Cred manager" />
     <MESSAGE value="feat: removed workspace from git" />
     <MESSAGE value="fix: remove bluetooth" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: remove bluetooth" />
+    <MESSAGE value="feat: read drone status" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: read drone status" />
   </component>
 </project>

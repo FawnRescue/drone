@@ -24,6 +24,7 @@ dependencies {
     //add kotlinx serialization
     implementation("io.ktor:ktor-client-serialization:2.3.7")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+    implementation("com.google.code.gson:gson:2.8.9")
 }
 
 tasks.test {
