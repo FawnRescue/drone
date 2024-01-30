@@ -50,7 +50,7 @@ class CredentialManager {
 
     private fun fetchCredentialsFromNode() {
         try {
-            val command = listOf("node", "C:/Users/Larsk/PycharmProjects/bluetooth/bluetooth.js")
+            val command = listOf("sudo", "node", "/home/drone/bluetooth/bluetooth.js")
             println("Executing command: $command")
             val processBuilder = ProcessBuilder(command)
             val process = processBuilder.start()
@@ -59,7 +59,7 @@ class CredentialManager {
             val output = reader.readLine()?.split(",")
             println("Output: $output")
             if (output != null && output.size == 2) {
-                storeCredentials(output[0], output[1])
+                storeCredentials(output[1], output[0])
             }
 
             process.waitFor()

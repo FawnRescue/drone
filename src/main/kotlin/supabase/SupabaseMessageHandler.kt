@@ -4,16 +4,15 @@ import drone.DroneController
 import drone.DroneState
 import drone.DroneStatus
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.gotrue.auth
+import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.realtime.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
-import java.lang.Thread.sleep
+import supabase.domain.Aircraft
 import kotlin.time.Duration.Companion.seconds
 
 class SupabaseMessageHandler(private val controller: DroneController) {
@@ -25,9 +24,22 @@ class SupabaseMessageHandler(private val controller: DroneController) {
         install(Realtime) {
             reconnectDelay = 5.seconds
         }
+        install(Postgrest)
     }
     val channel = supabase.channel(controller.token)
     var isSubscribed = false
+    
+    suspend fun checkToken(): Boolean {
+        val aircraft =
+            supabase.from("aircraft").select {
+                filter {
+                    eq("token", controller.token)
+                    eq("deleted", false)
+                }
+            }.decodeList<Aircraft>()
+        aircraft.forEach { println(it) }
+        return aircraft.size == 1
+    }
 
     fun startListening() = CoroutineScope(Dispatchers.IO).launch {
         // Logic to listen to Supabase messages
