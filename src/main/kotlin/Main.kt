@@ -1,14 +1,17 @@
 import credentials.CredentialManager
 import drone.DroneController
 import kotlinx.coroutines.runBlocking
-import java.lang.Thread.sleep
 
 fun main(): Unit = runBlocking {
     lateinit var credentialManager: CredentialManager
     lateinit var controller: DroneController
     do {
         credentialManager = CredentialManager()
-        controller = DroneController(token = credentialManager.token!!, key = credentialManager.key!!)
+        controller = DroneController(
+            accessToken = credentialManager.accessToken!!,
+            refreshToken = credentialManager.refreshToken!!,
+            token = credentialManager.token!!
+        )
         if (!controller.supabaseHandler.checkToken()) {
             println("No valid Credentials!")
             credentialManager.deleteCredentials()

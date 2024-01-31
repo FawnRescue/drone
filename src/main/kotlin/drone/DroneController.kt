@@ -2,7 +2,7 @@ package drone
 
 import supabase.SupabaseMessageHandler
 
-class DroneController(val token: String, val key: String) {
+class DroneController(val accessToken: String, val refreshToken: String, val token: String) {
     var currentState = DroneState.IDLE
         private set
 

@@ -4,6 +4,7 @@ import drone.DroneController
 import drone.DroneState
 import drone.DroneStatus
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.gotrue.Auth
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
@@ -25,20 +26,24 @@ class SupabaseMessageHandler(private val controller: DroneController) {
             reconnectDelay = 5.seconds
         }
         install(Postgrest)
+        install(Auth)
     }
     val channel = supabase.channel(controller.token)
     var isSubscribed = false
-    
+
     suspend fun checkToken(): Boolean {
-        val aircraft =
-            supabase.from("aircraft").select {
-                filter {
-                    eq("token", controller.token)
-                    eq("deleted", false)
-                }
-            }.decodeList<Aircraft>()
-        aircraft.forEach { println(it) }
-        return aircraft.size == 1
+        supabase.auth.importAuthToken(controller.accessToken, controller.refreshToken)
+        var aircraft: List<Aircraft> = emptyList()
+        do {
+            aircraft =
+                supabase.from("aircraft").select {
+                    filter {
+                        eq("token", controller.token)
+                    }
+                }.decodeList<Aircraft>()
+            delay(100)
+        } while (aircraft.isEmpty())
+        return !aircraft.first().deleted
     }
 
     fun startListening() = CoroutineScope(Dispatchers.IO).launch {
