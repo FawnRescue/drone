@@ -7,11 +7,10 @@ fun main(): Unit = runBlocking {
     lateinit var controller: DroneController
     do {
         credentialManager = CredentialManager()
-        controller = DroneController(
-            accessToken = credentialManager.accessToken!!,
-            refreshToken = credentialManager.refreshToken!!,
-            token = credentialManager.token!!
-        )
+        if (!credentialManager.areCredentialsAvailable()) {
+            continue
+        }
+        controller = DroneController(credentialManager)
         if (!controller.supabaseHandler.checkToken()) {
             println("No valid Credentials!")
             credentialManager.deleteCredentials()

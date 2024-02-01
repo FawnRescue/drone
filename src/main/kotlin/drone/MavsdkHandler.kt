@@ -58,6 +58,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private fun reconnect() {
         println("Connection lost. Attempting to reconnect...")
         // Reinitialize the drone object or perform necessary steps to reconnect
+        // TODO: I think here is a memory leak because the old drone object is still running
         drone = System("172.19.40.205", 50051)
         readDroneStatus()
     }

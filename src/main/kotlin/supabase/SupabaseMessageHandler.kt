@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import supabase.domain.Aircraft
+import supabase.domain.InsertableAircraft
 import kotlin.time.Duration.Companion.seconds
 
 class SupabaseMessageHandler(private val controller: DroneController) {
@@ -28,17 +29,17 @@ class SupabaseMessageHandler(private val controller: DroneController) {
         install(Postgrest)
         install(Auth)
     }
-    val channel = supabase.channel(controller.token)
+    val channel = supabase.channel(controller.credentials.token!!)
     var isSubscribed = false
 
     suspend fun checkToken(): Boolean {
-        supabase.auth.importAuthToken(controller.accessToken, controller.refreshToken)
-        var aircraft: List<Aircraft> = emptyList()
+        supabase.auth.importAuthToken(controller.credentials.accessToken!!, controller.credentials.refreshToken!!)
+        var aircraft: List<Aircraft>
         do {
             aircraft =
                 supabase.from("aircraft").select {
                     filter {
-                        eq("token", controller.token)
+                        eq("token", controller.credentials.token!!)
                     }
                 }.decodeList<Aircraft>()
             delay(100)

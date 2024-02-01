@@ -23,15 +23,15 @@ class CredentialManager {
             token = credentials.token
             println("Credentials loaded.")
         } else {
-            println("Credentials file not found.")
-            fetchCredentialsFromNode()
-            println("Credentials fetched.")
+            do {
+                fetchCredentialsFromNode()
+            } while (!areCredentialsAvailable())
         }
     }
 
     fun areCredentialsAvailable(): Boolean = accessToken != null && refreshToken != null && token != null
 
-    private fun storeCredentials(accessToken: String, refreshToken: String, token: String) {
+    fun storeCredentials(accessToken: String, refreshToken: String, token: String) {
         this.accessToken = accessToken
         this.refreshToken = refreshToken
         this.token = token
