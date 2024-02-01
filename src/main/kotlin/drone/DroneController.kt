@@ -2,9 +2,8 @@ package drone
 
 import supabase.SupabaseMessageHandler
 
-class DroneController(val accessToken: String, val refreshToken: String, val token: String) {
-    var currentState = DroneState.IDLE
-        private set
+class DroneController() {
+    private var currentState = DroneState.IDLE
 
     val supabaseHandler = SupabaseMessageHandler(this)
     val mavsdkHandler = MavsdkHandler(this, supabaseHandler)

@@ -1,34 +1,55 @@
-import credentials.CredentialManager
+import credentials.Credentials
+import credentials.TokenManager
 import drone.DroneController
+import io.github.jan.supabase.gotrue.SessionStatus
 import kotlinx.coroutines.runBlocking
 
 fun main(): Unit = runBlocking {
-    lateinit var credentialManager: CredentialManager
-    lateinit var controller: DroneController
-    do {
-        credentialManager = CredentialManager()
-        controller = DroneController(
-            accessToken = credentialManager.accessToken!!,
-            refreshToken = credentialManager.refreshToken!!,
-            token = credentialManager.token!!
-        )
-        if (!controller.supabaseHandler.checkToken()) {
-            println("No valid Credentials!")
-            credentialManager.deleteCredentials()
+    val tokenManager = TokenManager()
+    val controller = DroneController()
+
+    controller.supabaseHandler.authFlow.collect {
+        when (it) {
+            is SessionStatus.Authenticated -> authenticated(controller)
+            SessionStatus.LoadingFromStorage -> {
+                println("Loading")
+            }
+
+            SessionStatus.NetworkError -> {
+                println("Network Error")
+            }
+
+            SessionStatus.NotAuthenticated -> notAuthenticated(tokenManager, controller)
         }
+    }
+}
 
-    } while (!credentialManager.areCredentialsAvailable())
+fun authenticated(controller: DroneController) {
+    runBlocking {
+        val result = controller.supabaseHandler.setup()
+        if (!result) {
+            return@runBlocking
+        }
+        val supabase = controller.supabaseHandler.startListening()
 
+        // Start MAVSDK communication
+        val mavsdk = controller.mavsdkHandler.startCommunicating()
 
-    // Start Supabase message handling
-    val supabase = controller.supabaseHandler.startListening()
+        // Additional main logic
+        mavsdk.join()
+        supabase.join()
 
-    // Start MAVSDK communication
-    val mavsdk = controller.mavsdkHandler.startCommunicating()
+        controller.supabaseHandler.cleanup()
+    }
+}
 
-    // Additional main logic
-    mavsdk.join()
-    supabase.join()
-
-    controller.supabaseHandler.cleanup()
+fun notAuthenticated(tokenManager: TokenManager, controller: DroneController) {
+    runBlocking {
+        var loginData: Credentials? = null
+        do {
+            loginData = tokenManager.fetchCredentialsFromNode()
+        } while (loginData == null)
+        println(loginData)
+        controller.supabaseHandler.login(loginData.otp, loginData.email, loginData.token)
+    }
 }

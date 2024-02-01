@@ -5,6 +5,7 @@ import drone.DroneState
 import drone.DroneStatus
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.gotrue.Auth
+import io.github.jan.supabase.gotrue.OtpType
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
@@ -14,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import supabase.domain.Aircraft
+import supabase.domain.InsertableAircraft
+import java.io.File
 import kotlin.time.Duration.Companion.seconds
 
 class SupabaseMessageHandler(private val controller: DroneController) {
@@ -28,22 +31,46 @@ class SupabaseMessageHandler(private val controller: DroneController) {
         install(Postgrest)
         install(Auth)
     }
-    val channel = supabase.channel(controller.token)
+    private lateinit var token: String
+    lateinit var channel: RealtimeChannel
     var isSubscribed = false
+    val authFlow = supabase.auth.sessionStatus
+    val tokenFile = File("token")
 
-    suspend fun checkToken(): Boolean {
-        supabase.auth.importAuthToken(controller.accessToken, controller.refreshToken)
-        var aircraft: List<Aircraft> = emptyList()
-        do {
-            aircraft =
-                supabase.from("aircraft").select {
-                    filter {
-                        eq("token", controller.token)
-                    }
-                }.decodeList<Aircraft>()
-            delay(100)
-        } while (aircraft.isEmpty())
-        return !aircraft.first().deleted
+    suspend fun login(otp: String, email: String, token: String) {
+        this.token = token
+        supabase.auth.verifyEmailOtp(type = OtpType.Email.MAGIC_LINK, email = email, token = otp)
+    }
+
+    suspend fun setup(): Boolean {
+        if (!tokenFile.exists()) {
+            tokenFile.writeText(token)
+        } else {
+            token = tokenFile.readText()
+        }
+        if (!checkDatabase()) {
+            return false
+        }
+
+        channel = supabase.channel(token)
+        return true
+    }
+
+    private suspend fun checkDatabase(): Boolean {
+        val aircraft: List<Aircraft> = supabase.from("aircraft").select {
+            filter {
+                eq("token", token)
+            }
+        }.decodeList<Aircraft>()
+        if (aircraft.isEmpty()) {
+            supabase.from("aircraft")
+                .insert(InsertableAircraft(name = "Aircraft-${token.subSequence(0, 4)}", token = token))
+        } else if (aircraft.first().deleted) {
+            supabase.auth.signOut()
+            tokenFile.delete()
+            return false
+        }
+        return true
     }
 
     fun startListening() = CoroutineScope(Dispatchers.IO).launch {
