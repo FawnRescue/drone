@@ -12,7 +12,7 @@ import supabase.SupabaseMessageHandler
 import java.lang.Thread.sleep
 
 class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
-    private var drone = System("172.19.40.205", 50051)
+    private var drone = System()
     private var armed: Boolean? = null
     private var battery: Float? = null
     private var location: String? = null
@@ -38,7 +38,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                     false -> DroneState.IDLE
                     null -> DroneState.NOT_CONNECTED
                 },
-                battery = battery,
+                battery = if (battery?.isFinite() == true) battery else null,
                 location = location
             )
             sendDroneStatusToBackend(status)
@@ -59,7 +59,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         println("Connection lost. Attempting to reconnect...")
         // Reinitialize the drone object or perform necessary steps to reconnect
         // TODO: I think here is a memory leak because the old drone object is still running
-        drone = System("172.19.40.205", 50051)
+        drone = System()
         readDroneStatus()
     }
 }
