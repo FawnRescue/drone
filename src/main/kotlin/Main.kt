@@ -8,6 +8,9 @@ fun main(): Unit = runBlocking {
     val tokenManager = TokenManager()
     val controller = DroneController()
 
+    // TODO: Replace with your own credentials for debugging
+    // controller.supabaseHandler.debugLogin("Password1!", "larskaesberg@yahoo.de", "880f519e-2c22-4afd-b73b-6447cb224dbb")
+
     controller.supabaseHandler.authFlow.collect {
         when (it) {
             is SessionStatus.Authenticated -> authenticated(controller)

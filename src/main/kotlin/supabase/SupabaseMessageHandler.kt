@@ -7,6 +7,7 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.gotrue.Auth
 import io.github.jan.supabase.gotrue.OtpType
 import io.github.jan.supabase.gotrue.auth
+import io.github.jan.supabase.gotrue.providers.builtin.Email
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.realtime.*
@@ -21,25 +22,32 @@ import kotlin.time.Duration.Companion.seconds
 
 class SupabaseMessageHandler(private val controller: DroneController) {
     private val supabase = createSupabaseClient(
-        supabaseUrl = "https://irvsopidchmqfxbdpxqt.supabase.co",
-        supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlydnNvcGlkY2htcWZ4YmRweHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDE3MDI4NDgsImV4cCI6MjAxNzI3ODg0OH0.oaKgHBwqw5WsYhM1_nYNJKGyidmEkIO6GaqjEWtVHI8"
-
+        supabaseUrl = "https://irvsopidchmqfxbdpxqt.supabase.co",   // TODO Use environment variables
+        supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlydnNvcGlkY2htcWZ4YmRweHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDE3MDI4NDgsImV4cCI6MjAxNzI3ODg0OH0.oaKgHBwqw5WsYhM1_nYNJKGyidmEkIO6GaqjEWtVHI8" // TODO Use environment variables
     ) {
         install(Realtime) {
             reconnectDelay = 5.seconds
         }
         install(Postgrest)
         install(Auth)
-    }
+    } // TODO Move to constructor
+    private val tokenFile = File("token")
     private lateinit var token: String
     lateinit var channel: RealtimeChannel
     var isSubscribed = false
     val authFlow = supabase.auth.sessionStatus
-    val tokenFile = File("token")
 
     suspend fun login(otp: String, email: String, token: String) {
         this.token = token
         supabase.auth.verifyEmailOtp(type = OtpType.Email.MAGIC_LINK, email = email, token = otp)
+    }
+
+    suspend fun debugLogin(debugPassword: String, debugEmail: String, token: String) {
+        this.token = token
+        supabase.auth.signInWith(Email) {
+            email = debugEmail
+            password = debugPassword
+        }
     }
 
     suspend fun setup(): Boolean {
