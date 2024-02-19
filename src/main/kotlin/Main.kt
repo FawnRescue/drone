@@ -1,3 +1,4 @@
+import credentials.ConfigManager
 import credentials.Credentials
 import credentials.TokenManager
 import drone.DroneController
@@ -8,8 +9,13 @@ fun main(): Unit = runBlocking {
     val tokenManager = TokenManager()
     val controller = DroneController()
 
-    // TODO: Replace with your own credentials for debugging
-    // controller.supabaseHandler.debugLogin("Password1!", "larskaesberg@yahoo.de", "880f519e-2c22-4afd-b73b-6447cb224dbb")
+    // These credentials are used for simulated drone communication
+    val email = ConfigManager.get("email")
+    val password = ConfigManager.get("password")
+    val token = ConfigManager.get("token")
+    if (password != null && email != null && token != null) {
+        controller.supabaseHandler.debugLogin(password, email, token)
+    }
 
     controller.supabaseHandler.authFlow.collect {
         when (it) {
