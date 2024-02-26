@@ -27,7 +27,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
             drone?.telemetry?.battery?.doOnError { runBlocking { reconnect() } }
                 ?.forEach {
                     battery = Battery(
-                        remainingPercent = if (it.remainingPercent?.isFinite() == true) it.remainingPercent else -1f,
+                        remainingPercent = if (it.remainingPercent?.isFinite() == true) it.remainingPercent else null,
                         voltage = it.voltageV
                     )
                 }
@@ -45,9 +45,13 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     }
 
     fun startCommunicating() = CoroutineScope(Dispatchers.IO).launch {
-        drone = System(ConfigManager.getDronePath(), ConfigManager.getDronePort())
+        println("Connecting to ${ConfigManager.getDronePath()}:${ConfigManager.getDronePort()}")
+        try {
+            drone = System(ConfigManager.getDronePath(), ConfigManager.getDronePort())
+        } catch (e: Exception) {
+            println("Cant Connect!")
+        }
         readDroneStatus()
-        drone?.action?.arm()?.blockingAwait()
         while (isActive) {
             val status = DroneStatus(
                 state = when (armed) {
