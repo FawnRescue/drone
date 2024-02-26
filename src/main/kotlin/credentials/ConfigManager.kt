@@ -23,6 +23,6 @@ object ConfigManager {
 
     fun get(key: String): String? = properties.getProperty(key)
 
-    fun getDronePath(): String = get("dronePath") ?: "localhost"
+    fun getDronePath(): String = get("dronePath") ?: "127.0.0.1"
     fun getDronePort(): Int = get("dronePort")?.toInt() ?: 50051
 }
