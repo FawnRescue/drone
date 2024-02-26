@@ -74,7 +74,14 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     }
 
     fun executeCommand(command: String) {
-        // Logic to execute commands on the drone
+        when (command) {
+            "arm" -> drone?.action?.arm()?.blockingAwait()
+            "disarm" -> drone?.action?.disarm()?.blockingAwait()
+            "takeoff" -> drone?.action?.takeoff()?.blockingAwait()
+            "land" -> drone?.action?.land()?.blockingAwait()
+            "return" -> drone?.action?.returnToLaunch()?.blockingAwait()
+            else -> println("Unknown command")
+        }
     }
 
     private suspend fun sendDroneStatusToBackend(data: DroneStatus) {

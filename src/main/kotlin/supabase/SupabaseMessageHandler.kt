@@ -4,6 +4,7 @@ import drone.DroneController
 import drone.DroneState
 import drone.DroneStatus
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.decodeIfNotEmptyOrDefault
 import io.github.jan.supabase.gotrue.Auth
 import io.github.jan.supabase.gotrue.OtpType
 import io.github.jan.supabase.gotrue.auth
@@ -15,7 +16,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
 import supabase.domain.Aircraft
+import supabase.domain.Command
 import supabase.domain.InsertableAircraft
 import java.io.File
 import kotlin.time.Duration.Companion.seconds
@@ -84,9 +88,17 @@ class SupabaseMessageHandler(private val controller: DroneController) {
     fun startListening() = CoroutineScope(Dispatchers.IO).launch {
         // Logic to listen to Supabase messages
         println("Subscribing...")
+        val commandFlow = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+            table = "command"
+        }
         channel.subscribe(blockUntilSubscribed = true)
         isSubscribed = true
         println("Subscribed!")
+        commandFlow.collect {
+            val command = Json.decodeFromJsonElement<Command>(it.record)
+            println("Received command: ${command.command}")
+            controller.mavsdkHandler.executeCommand(command.command)
+        }
     }
 
     suspend fun sendDroneStatus(status: DroneStatus) {
