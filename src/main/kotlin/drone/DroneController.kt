@@ -1,6 +1,7 @@
 package drone
 
 import supabase.SupabaseMessageHandler
+import supabase.domain.CommandType
 
 class DroneController() {
     private var currentState = DroneState.IDLE
@@ -18,7 +19,7 @@ class DroneController() {
         // Handle MAVSDK errors
     }
 
-    fun sendCommandToDrone(command: String) {
+    fun sendCommandToDrone(command: CommandType) {
         mavsdkHandler.executeCommand(command)
     }
 

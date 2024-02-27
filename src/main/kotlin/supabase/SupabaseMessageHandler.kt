@@ -20,8 +20,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import supabase.domain.Aircraft
 import supabase.domain.Command
+import supabase.domain.CommandStatus
 import supabase.domain.InsertableAircraft
 import java.io.File
+import javax.management.Query.eq
 import kotlin.time.Duration.Companion.seconds
 
 class SupabaseMessageHandler(private val controller: DroneController) {
@@ -96,8 +98,22 @@ class SupabaseMessageHandler(private val controller: DroneController) {
         println("Subscribed!")
         commandFlow.collect {
             val command = Json.decodeFromJsonElement<Command>(it.record)
+            if (command.aircraft != token) {
+                return@collect
+            }
+            if (command.status != CommandStatus.PENDING) {
+                return@collect
+            }
             println("Received command: ${command.command}")
-            controller.mavsdkHandler.executeCommand(command.command)
+            controller.sendCommandToDrone(command.command)
+            supabase.from("command").update({
+                set("status", CommandStatus.EXECUTED)
+            }
+            ) {
+                filter {
+                    eq("id", command.id)
+                }
+            }
         }
     }
 

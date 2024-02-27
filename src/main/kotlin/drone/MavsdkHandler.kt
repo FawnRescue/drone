@@ -5,6 +5,7 @@ import io.mavsdk.System
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import supabase.SupabaseMessageHandler
+import supabase.domain.CommandType
 import java.lang.Thread.sleep
 
 class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
@@ -73,13 +74,13 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         }
     }
 
-    fun executeCommand(command: String) {
+    fun executeCommand(command: CommandType) {
         when (command) {
-            "arm" -> drone?.action?.arm()?.blockingAwait()
-            "disarm" -> drone?.action?.disarm()?.blockingAwait()
-            "takeoff" -> drone?.action?.takeoff()?.blockingAwait()
-            "land" -> drone?.action?.land()?.blockingAwait()
-            "return" -> drone?.action?.returnToLaunch()?.blockingAwait()
+            CommandType.ARM -> drone?.action?.arm()?.blockingAwait()
+            CommandType.DISARM -> drone?.action?.disarm()?.blockingAwait()
+            CommandType.TAKEOFF -> drone?.action?.takeoff()?.blockingAwait()
+            CommandType.LAND -> drone?.action?.land()?.blockingAwait()
+            CommandType.RETURN -> drone?.action?.returnToLaunch()?.blockingAwait()
             else -> println("Unknown command")
         }
     }
