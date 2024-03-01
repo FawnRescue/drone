@@ -1,6 +1,8 @@
 plugins {
     kotlin("jvm") version "1.9.21"
     kotlin("plugin.serialization") version "1.9.21"
+    id("com.github.johnrengelman.shadow") version "8.1.1"
+
 }
 
 group = "org.example"
@@ -8,7 +10,6 @@ version = "1.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
-    maven { url = uri("https://jitpack.io") }
 }
 
 dependencies {
@@ -17,7 +18,7 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
     implementation("io.github.jan-tennert.supabase:realtime-kt")
 
-    implementation("io.mavsdk:mavsdk:1.3.1")
+    implementation("io.mavsdk:mavsdk:2.0.1")
     //add ktor client engine (if you don't already have one, see https://ktor.io/docs/http-client-engines.html for all engines)
     //e.g. the CIO engine
     implementation("io.ktor:ktor-client-cio:2.3.7")
@@ -31,22 +32,19 @@ tasks.test {
     useJUnitPlatform()
 }
 kotlin {
-    jvmToolchain(11)
+    jvmToolchain(17)
 }
 
-val fatJar = task("fatJar", type = Jar::class) {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+tasks.shadowJar {
+    archiveClassifier.set("")
+    configurations = listOf(project.configurations.runtimeClasspath.get())
+    mergeServiceFiles()
+
     manifest {
-        attributes["Implementation-Title"] = "Gradle Jar File Example"
-        attributes["Implementation-Version"] = version
-        attributes["Main-Class"] = "MainKt"
+        attributes["Main-Class"] = "MainKt" // Replace with your main class
     }
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
-    with(tasks.jar.get() as CopySpec)
 }
 
-tasks {
-    "build" {
-        dependsOn(fatJar)
-    }
+tasks.named("build") {
+    dependsOn("shadowJar")
 }

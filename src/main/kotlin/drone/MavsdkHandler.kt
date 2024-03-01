@@ -100,7 +100,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
                 // Assuming sleep is a suspend function from kotlinx.coroutines package
                 // If not, replace with delay(100) which is the correct way to delay in coroutines
-                delay(100)
+                delay(1000)
 
                 drone = System(ConfigManager.getDronePath(), ConfigManager.getDronePort())
                 readDroneStatus()
