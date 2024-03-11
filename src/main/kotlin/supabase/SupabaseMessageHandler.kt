@@ -12,10 +12,7 @@ import io.github.jan.supabase.gotrue.providers.builtin.Email
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.realtime.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import supabase.domain.Aircraft
@@ -97,42 +94,50 @@ class SupabaseMessageHandler(private val controller: DroneController) {
         isSubscribed = true
         println("Subscribed!")
         commandFlow.collect {
-            val command = Json.decodeFromJsonElement<Command>(it.record)
-            if (command.aircraft != token) {
-                return@collect
-            }
-            if (command.status != CommandStatus.PENDING) {
-                return@collect
-            }
-            println("Received command: ${command.command}")
-            controller.sendCommandToDrone(command.command)
-            supabase.from("command").update({
-                set("status", CommandStatus.EXECUTED)
-            }
-            ) {
-                filter {
-                    eq("id", command.id)
+            try {
+                val command = Json.decodeFromJsonElement<Command>(it.record)
+                if (command.aircraft != token) {
+                    return@collect
                 }
+                if (command.status != CommandStatus.PENDING) {
+                    return@collect
+                }
+                println("Received command: ${command.command}")
+                controller.sendCommandToDrone(command.command)
+                supabase.from("command").update({
+                    set("status", CommandStatus.EXECUTED)
+                }
+                ) {
+                    filter {
+                        eq("id", command.id)
+                    }
+                }
+            } catch (e: Exception) {
+                println("Error executing command: ${it.record}")
             }
         }
     }
 
     suspend fun sendDroneStatus(status: DroneStatus) {
         // Logic to send drone status to Supabase
-        sendData(status)
+        sendData("aircraft_status", status)
     }
 
-    suspend fun sendDroneState(status: DroneState) {
-        // Logic to send drone status to Supabase
-        sendData(status)
+    fun getMission(id: String) {
+        /*val aircraft: List<> = supabase.from("").select {
+            filter {
+                eq("token", token)
+            }
+        }.decodeList<Aircraft>()*/
     }
 
-    suspend inline fun <reified T : Any> sendData(data: T) {
+    suspend inline fun <reified T : Any> sendData(event: String, data: T) {
         // Logic to send arbitrary data to the backend
         while (!isSubscribed) {
+            yield()
             delay(100)
         }
-        channel.broadcast("event", data)
+        channel.broadcast(event, data)
     }
 
     suspend fun cleanup() {

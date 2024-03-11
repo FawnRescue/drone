@@ -9,16 +9,6 @@ class DroneController() {
     val supabaseHandler = SupabaseMessageHandler(this)
     val mavsdkHandler = MavsdkHandler(this, supabaseHandler)
 
-    suspend fun updateState(newState: DroneState) {
-        currentState = newState
-        // Send state update to Supabase
-        supabaseHandler.sendDroneState(newState)
-    }
-
-    fun handleMavsdkError(error: String) {
-        // Handle MAVSDK errors
-    }
-
     fun sendCommandToDrone(command: CommandType) {
         mavsdkHandler.executeCommand(command)
     }

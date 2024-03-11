@@ -2,6 +2,9 @@ package drone
 
 import credentials.ConfigManager
 import io.mavsdk.System
+import io.mavsdk.mission.Mission.MissionPlan
+import io.mavsdk.telemetry.Telemetry.FlightMode
+import io.mavsdk.telemetry.Telemetry.LandedState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import supabase.SupabaseMessageHandler
@@ -15,6 +18,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
     // Drone stats
     private var armed: Boolean? = null
+    private var inAir: Boolean? = null
+    private var flightMode: FlightMode? = null
+    private var landedState: LandedState? = null
 
     private var battery: Battery? = null
 
@@ -46,6 +52,21 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                     numSatellites = it.numSatellites
                 },
                 { runBlocking { reconnect() } })
+            drone?.telemetry?.inAir?.subscribe(
+                {
+                    inAir = it
+                },
+                { runBlocking { reconnect() } })
+            drone?.telemetry?.landedState?.subscribe(
+                {
+                    landedState = it
+                },
+                { runBlocking { reconnect() } })
+            drone?.telemetry?.flightMode?.subscribe(
+                {
+                    flightMode = it
+                },
+                { runBlocking { reconnect() } })
         }
     }
 
@@ -60,7 +81,12 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         while (isActive) {
             val status = DroneStatus(
                 state = when (armed) {
-                    true -> DroneState.IN_FLIGHT
+                    true -> when (inAir) {
+                        true -> DroneState.IN_FLIGHT
+                        false -> DroneState.ARMED
+                        null -> DroneState.NOT_CONNECTED
+                    }
+
                     false -> DroneState.IDLE
                     null -> DroneState.NOT_CONNECTED
                 },
@@ -80,9 +106,17 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
             CommandType.DISARM -> drone?.action?.disarm()?.blockingAwait()
             CommandType.TAKEOFF -> drone?.action?.takeoff()?.blockingAwait()
             CommandType.LAND -> drone?.action?.land()?.blockingAwait()
-            CommandType.RETURN -> drone?.action?.returnToLaunch()?.blockingAwait()
-            else -> println("Unknown command")
+            CommandType.FLY2CHECKPOINT -> TODO()
+            CommandType.CAPTURE_IMAGE -> TODO()
+            CommandType.LOITER -> drone?.action?.takeoff()?.blockingAwait()
+            CommandType.RTH -> drone?.action?.returnToLaunch()?.blockingAwait()
+            CommandType.KILL -> drone?.action?.kill()?.blockingAwait()
+            CommandType.ELAND -> drone?.action?.gotoLocation(3.0, 3.0, 3f, 0f)?.blockingAwait()
+            CommandType.CONTINUE -> TODO()
         }
+    }
+
+    fun loadMission(id: String) {
     }
 
     private suspend fun sendDroneStatusToBackend(data: DroneStatus) {
