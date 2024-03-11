@@ -143,9 +143,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 Mission.MissionItem.VehicleAction.NONE
             )
         } ?: emptyList())
-        drone?.mission?.setCurrentMissionItem(0)?.blockingAwait() // TODO: use actual checkpoint
-        drone?.mission?.setReturnToLaunchAfterMission(true)?.blockingAwait()
         drone?.mission?.uploadMission(missionPlan)?.blockingAwait()
+        drone?.mission?.setReturnToLaunchAfterMission(true)?.blockingAwait()
+        drone?.mission?.setCurrentMissionItem(0)?.blockingAwait() // TODO: use actual checkpoint
         drone?.mission?.startMission()?.blockingAwait()
     }
 
