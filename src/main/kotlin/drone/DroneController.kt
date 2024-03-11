@@ -1,6 +1,7 @@
 package drone
 
 import supabase.SupabaseMessageHandler
+import supabase.domain.Command
 import supabase.domain.CommandType
 
 class DroneController() {
@@ -9,7 +10,7 @@ class DroneController() {
     val supabaseHandler = SupabaseMessageHandler(this)
     val mavsdkHandler = MavsdkHandler(this, supabaseHandler)
 
-    fun sendCommandToDrone(command: CommandType) {
+    fun sendCommandToDrone(command: Command) {
         mavsdkHandler.executeCommand(command)
     }
 

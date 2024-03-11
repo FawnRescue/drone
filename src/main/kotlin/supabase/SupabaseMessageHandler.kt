@@ -15,10 +15,7 @@ import io.github.jan.supabase.realtime.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
-import supabase.domain.Aircraft
-import supabase.domain.Command
-import supabase.domain.CommandStatus
-import supabase.domain.InsertableAircraft
+import supabase.domain.*
 import java.io.File
 import javax.management.Query.eq
 import kotlin.time.Duration.Companion.seconds
@@ -103,7 +100,7 @@ class SupabaseMessageHandler(private val controller: DroneController) {
                     return@collect
                 }
                 println("Received command: ${command.command}")
-                controller.sendCommandToDrone(command.command)
+                controller.sendCommandToDrone(command)
                 supabase.from("command").update({
                     set("status", CommandStatus.EXECUTED)
                 }
@@ -123,12 +120,26 @@ class SupabaseMessageHandler(private val controller: DroneController) {
         sendData("aircraft_status", status)
     }
 
-    fun getMission(id: String) {
-        /*val aircraft: List<> = supabase.from("").select {
+    suspend fun getFlightPlan(id: String): FlightPlan? {
+        val flightDate: FlightDate = supabase.from("flightdate").select {
             filter {
-                eq("token", token)
+                eq("id", id)
             }
-        }.decodeList<Aircraft>()*/
+        }.decodeSingle<FlightDate>()
+        val mission: Mission = supabase.from("mission").select {
+            filter {
+                eq("id", flightDate.mission)
+            }
+        }.decodeSingle<Mission>()
+        if (mission.plan == null) {
+            return null
+        }
+        val flightPlan: FlightPlan = supabase.from("flightplan").select {
+            filter {
+                eq("id", mission.plan)
+            }
+        }.decodeSingle<FlightPlan>()
+        return flightPlan
     }
 
     suspend inline fun <reified T : Any> sendData(event: String, data: T) {

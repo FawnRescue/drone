@@ -2,12 +2,14 @@ package drone
 
 import credentials.ConfigManager
 import io.mavsdk.System
+import io.mavsdk.mission.Mission
 import io.mavsdk.mission.Mission.MissionPlan
 import io.mavsdk.telemetry.Telemetry.FlightMode
 import io.mavsdk.telemetry.Telemetry.LandedState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import supabase.SupabaseMessageHandler
+import supabase.domain.Command
 import supabase.domain.CommandType
 import java.lang.Thread.sleep
 
@@ -100,8 +102,8 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         }
     }
 
-    fun executeCommand(command: CommandType) {
-        when (command) {
+    fun executeCommand(command: Command) {
+        when (command.command) {
             CommandType.ARM -> drone?.action?.arm()?.blockingAwait()
             CommandType.DISARM -> drone?.action?.disarm()?.blockingAwait()
             CommandType.TAKEOFF -> drone?.action?.takeoff()?.blockingAwait()
@@ -111,12 +113,34 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
             CommandType.LOITER -> drone?.action?.takeoff()?.blockingAwait()
             CommandType.RTH -> drone?.action?.returnToLaunch()?.blockingAwait()
             CommandType.KILL -> drone?.action?.kill()?.blockingAwait()
-            CommandType.ELAND -> drone?.action?.gotoLocation(3.0, 3.0, 3f, 0f)?.blockingAwait()
-            CommandType.CONTINUE -> TODO()
+            CommandType.ELAND -> drone?.action?.land()?.blockingAwait()
+            CommandType.CONTINUE -> CoroutineScope(Dispatchers.IO).launch { continueMission(command.context) }
         }
     }
 
-    fun loadMission(id: String) {
+
+    private suspend fun continueMission(id: String) {
+        val flightPlan = controller.supabaseHandler.getFlightPlan(id) ?: return
+        val missionPlan = MissionPlan(flightPlan.checkpoints?.map {
+            Mission.MissionItem(
+                it.latitude,
+                it.longitude,
+                10f,
+                5f,
+                true,
+                0f,
+                0f,
+                Mission.MissionItem.CameraAction.NONE,
+                1f,
+                0.0,
+                1f,
+                0f,
+                0f,
+                Mission.MissionItem.VehicleAction.NONE
+            )
+        } ?: emptyList())
+        drone?.mission?.uploadMission(missionPlan)?.blockingAwait()
+        drone?.mission?.startMission()?.blockingAwait()
     }
 
     private suspend fun sendDroneStatusToBackend(data: DroneStatus) {
