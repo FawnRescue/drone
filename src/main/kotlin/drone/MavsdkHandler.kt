@@ -103,18 +103,22 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     }
 
     fun executeCommand(command: Command) {
-        when (command.command) {
-            CommandType.ARM -> drone?.action?.arm()?.blockingAwait()
-            CommandType.DISARM -> drone?.action?.disarm()?.blockingAwait()
-            CommandType.TAKEOFF -> drone?.action?.takeoff()?.blockingAwait()
-            CommandType.LAND -> drone?.action?.land()?.blockingAwait()
-            CommandType.FLY2CHECKPOINT -> TODO()
-            CommandType.CAPTURE_IMAGE -> TODO()
-            CommandType.LOITER -> drone?.action?.takeoff()?.blockingAwait()
-            CommandType.RTH -> drone?.action?.returnToLaunch()?.blockingAwait()
-            CommandType.KILL -> drone?.action?.kill()?.blockingAwait()
-            CommandType.ELAND -> drone?.action?.land()?.blockingAwait()
-            CommandType.CONTINUE -> CoroutineScope(Dispatchers.IO).launch { continueMission(command.context) }
+        try {
+            when (command.command) {
+                CommandType.ARM -> drone?.action?.arm()?.blockingAwait()
+                CommandType.DISARM -> drone?.action?.disarm()?.blockingAwait()
+                CommandType.TAKEOFF -> drone?.action?.takeoff()?.blockingAwait()
+                CommandType.LAND -> drone?.action?.land()?.blockingAwait()
+                CommandType.FLY2CHECKPOINT -> TODO()
+                CommandType.CAPTURE_IMAGE -> TODO()
+                CommandType.LOITER -> drone?.action?.takeoff()?.blockingAwait()
+                CommandType.RTH -> drone?.action?.returnToLaunch()?.blockingAwait()
+                CommandType.KILL -> drone?.action?.kill()?.blockingAwait()
+                CommandType.ELAND -> drone?.action?.land()?.blockingAwait()
+                CommandType.CONTINUE -> CoroutineScope(Dispatchers.IO).launch { continueMission(command.context) }
+            }
+        } catch (e: Exception) {
+            println("Error executing Command: $command,\n Error: $e")
         }
     }
 
@@ -139,6 +143,8 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 Mission.MissionItem.VehicleAction.NONE
             )
         } ?: emptyList())
+        drone?.mission?.setCurrentMissionItem(0)?.blockingAwait() // TODO: use actual checkpoint
+        drone?.mission?.setReturnToLaunchAfterMission(true)?.blockingAwait()
         drone?.mission?.uploadMission(missionPlan)?.blockingAwait()
         drone?.mission?.startMission()?.blockingAwait()
     }
