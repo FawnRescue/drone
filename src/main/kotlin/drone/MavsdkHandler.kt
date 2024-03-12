@@ -131,12 +131,12 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 it.longitude,
                 10f,
                 5f,
-                true,
+                false,
                 0f,
                 0f,
-                Mission.MissionItem.CameraAction.NONE,
-                1f,
-                0.0,
+                Mission.MissionItem.CameraAction.TAKE_PHOTO,
+                5f,
+                5.0,
                 1f,
                 0f,
                 0f,
@@ -147,6 +147,24 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         drone?.mission?.setReturnToLaunchAfterMission(true)?.blockingAwait()
         drone?.mission?.setCurrentMissionItem(0)?.blockingAwait() // TODO: use actual checkpoint
         drone?.mission?.startMission()?.blockingAwait()
+        var last_val = 0
+        drone?.mission?.missionProgress?.subscribe {
+            println(it.current)
+            /*if (it.current != 0 && last_val < it.current) {
+                println("Pause")
+                drone?.mission?.pauseMission()?.blockingAwait()
+                drone?.mission?.setCurrentMissionItem(it.current)?.blockingAwait() // TODO: use actual checkpoint
+                println("Mache FOTOOOOO!!")
+                runBlocking {
+
+                    delay(1000)
+                }
+                drone?.mission?.startMission()?.blockingAwait()
+                last_val = it.current
+                println("UnPause")
+
+            }*/
+        }
     }
 
     private suspend fun sendDroneStatusToBackend(data: DroneStatus) {
