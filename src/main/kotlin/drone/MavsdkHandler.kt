@@ -12,6 +12,7 @@ import supabase.SupabaseMessageHandler
 import supabase.domain.Command
 import supabase.domain.CommandType
 import java.lang.Thread.sleep
+import kotlin.math.*
 
 class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
     private var drone: System? = null // Make 'drone' nullable
@@ -70,6 +71,18 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 },
                 { runBlocking { reconnect() } })
         }
+    }
+
+    private fun haversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val radiusEarth = 6371000
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val originLat = Math.toRadians(lat1)
+        val destinationLat = Math.toRadians(lat2)
+
+        val a = sin(dLat / 2).pow(2) + sin(dLon / 2).pow(2) * cos(originLat) * cos(destinationLat)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return radiusEarth * c
     }
 
     fun startCommunicating() = CoroutineScope(Dispatchers.IO).launch {
@@ -136,7 +149,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 0f,
                 Mission.MissionItem.CameraAction.TAKE_PHOTO,
                 5f,
-                5.0,
+                0.0,
                 1f,
                 0f,
                 0f,
@@ -147,23 +160,28 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         drone?.mission?.setReturnToLaunchAfterMission(true)?.blockingAwait()
         drone?.mission?.setCurrentMissionItem(0)?.blockingAwait() // TODO: use actual checkpoint
         drone?.mission?.startMission()?.blockingAwait()
-        var last_val = 0
+
+        var currentCheckpoint = missionPlan.missionItems[0]
+        var checkpointReached = false
         drone?.mission?.missionProgress?.subscribe {
-            println(it.current)
-            /*if (it.current != 0 && last_val < it.current) {
-                println("Pause")
-                drone?.mission?.pauseMission()?.blockingAwait()
-                drone?.mission?.setCurrentMissionItem(it.current)?.blockingAwait() // TODO: use actual checkpoint
-                println("Mache FOTOOOOO!!")
-                runBlocking {
+            currentCheckpoint = missionPlan.missionItems[it.current]
+            checkpointReached = false
+        }
+        drone?.telemetry?.position?.subscribe {
+            if (checkpointReached) {
+                return@subscribe
+            }
+            val distanceM = haversine(
+                currentCheckpoint.latitudeDeg,
+                currentCheckpoint.longitudeDeg,
+                it.latitudeDeg,
+                it.longitudeDeg
+            )
+            if (distanceM < 1) {
+                checkpointReached = true
+                println("Checkpoint")
+            }
 
-                    delay(1000)
-                }
-                drone?.mission?.startMission()?.blockingAwait()
-                last_val = it.current
-                println("UnPause")
-
-            }*/
         }
     }
 
