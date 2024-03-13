@@ -83,7 +83,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         return radiusEarth * c
     }
 
-    fun decodeFloat2D(byteArray: ByteArray, numRows: Int, numCols: Int): Array<FloatArray> {
+    private fun decodeFloat2D(byteArray: ByteArray, numRows: Int, numCols: Int): Array<FloatArray> {
         val byteBuffer = ByteBuffer.wrap(byteArray)
         byteBuffer.order(ByteOrder.LITTLE_ENDIAN) // Adjust if your data is big-endian
 
