@@ -1,23 +1,26 @@
 package supabase
 
 import drone.DroneController
-import drone.DroneState
 import drone.DroneStatus
 import io.github.jan.supabase.createSupabaseClient
-import io.github.jan.supabase.decodeIfNotEmptyOrDefault
 import io.github.jan.supabase.gotrue.Auth
 import io.github.jan.supabase.gotrue.OtpType
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.gotrue.providers.builtin.Email
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.realtime.*
+import io.github.jan.supabase.storage.Storage
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import supabase.domain.*
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
-import javax.management.Query.eq
+import javax.imageio.ImageIO
 import kotlin.time.Duration.Companion.seconds
 
 class SupabaseMessageHandler(private val controller: DroneController) {
@@ -30,6 +33,7 @@ class SupabaseMessageHandler(private val controller: DroneController) {
         }
         install(Postgrest)
         install(Auth)
+        install(Storage)
     } // TODO Move to constructor
     private val tokenFile = File("token")
     private lateinit var token: String
@@ -140,6 +144,26 @@ class SupabaseMessageHandler(private val controller: DroneController) {
             }
         }.decodeSingle<FlightPlan>()
         return flightPlan
+    }
+
+    suspend fun uploadImage(dataRGB: BufferedImage?, dataThermal: BufferedImage?, image: Image) {
+        val bucket = supabase.storage.from("images")
+        if (dataRGB != null) {
+            bucket.upload(image.rgb_path ?: "", bufferedImageToByteArray(dataRGB), upsert = false)
+        }
+        if (dataThermal != null) {
+            bucket.upload(image.thermal_path ?: "", bufferedImageToByteArray(dataThermal), upsert = false)
+        }
+        supabase.postgrest.from("image").insert(image)
+    }
+
+    private fun bufferedImageToByteArray(image: BufferedImage, format: String = "PNG"): ByteArray {
+        ByteArrayOutputStream().use { outputStream ->
+            // Write the buffered image to the output stream as PNG (or any other format)
+            ImageIO.write(image, format, outputStream)
+            // Convert the output stream to a byte array and return it
+            return outputStream.toByteArray()
+        }
     }
 
     suspend inline fun <reified T : Any> sendData(event: String, data: T) {

@@ -11,7 +11,16 @@ import kotlinx.coroutines.sync.Mutex
 import supabase.SupabaseMessageHandler
 import supabase.domain.Command
 import supabase.domain.CommandType
+import supabase.domain.Image
+import supabase.domain.LatLong
+import java.awt.image.BufferedImage
+import java.io.DataInputStream
+import java.io.PrintWriter
 import java.lang.Thread.sleep
+import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.*
 import kotlin.math.*
 
 class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
@@ -85,6 +94,25 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         return radiusEarth * c
     }
 
+    fun decodeFloat2D(byteArray: ByteArray, numRows: Int, numCols: Int): Array<FloatArray> {
+        val byteBuffer = ByteBuffer.wrap(byteArray)
+        byteBuffer.order(ByteOrder.LITTLE_ENDIAN) // Adjust if your data is big-endian
+
+        val floatValues = mutableListOf<Float>()
+        while (byteBuffer.hasRemaining()) {
+            floatValues.add(byteBuffer.float)
+        }
+
+        val floatArray2D = Array(numRows) { FloatArray(numCols) }
+        for (row in 0 until numRows) {
+            for (col in 0 until numCols) {
+                floatArray2D[row][col] = floatValues[row * numCols + col]
+            }
+        }
+
+        return floatArray2D
+    }
+
     fun startCommunicating() = CoroutineScope(Dispatchers.IO).launch {
         println("Connecting to ${ConfigManager.getDronePath()}:${ConfigManager.getDronePort()}")
         try {
@@ -136,8 +164,10 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     }
 
 
-    private suspend fun continueMission(id: String) {
-        val flightPlan = controller.supabaseHandler.getFlightPlan(id) ?: return
+    private suspend fun continueMission(flightDateID: String) {
+        val acceptanceRadius = 0.5f
+
+        val flightPlan = controller.supabaseHandler.getFlightPlan(flightDateID) ?: return
         val missionPlan = MissionPlan(flightPlan.checkpoints?.map {
             Mission.MissionItem(
                 it.latitude,
@@ -148,9 +178,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 0f,
                 0f,
                 Mission.MissionItem.CameraAction.TAKE_PHOTO,
-                5f,
+                2f,
                 0.0,
-                1f,
+                acceptanceRadius,
                 0f,
                 0f,
                 Mission.MissionItem.VehicleAction.NONE
@@ -164,6 +194,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         var currentCheckpoint = missionPlan.missionItems[0]
         var checkpointReached = false
         drone?.mission?.missionProgress?.subscribe {
+            if (currentCheckpoint == missionPlan.missionItems[it.current]) {
+                return@subscribe
+            }
             currentCheckpoint = missionPlan.missionItems[it.current]
             checkpointReached = false
         }
@@ -177,11 +210,65 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 it.latitudeDeg,
                 it.longitudeDeg
             )
-            if (distanceM < 1) {
+            if (distanceM < acceptanceRadius) {
                 checkpointReached = true
-                println("Checkpoint")
-            }
+                runBlocking {
+                    println("Checkpoint Reached")
+                    delay(1000)
+                    println("Photo")
 
+                    try {
+                        val name = UUID.randomUUID().toString()
+                        val image = captureThermalImage()
+                        val imagMetaData = Image(
+                            thermal_path = "${name}-thermal.png",
+                            location = LatLong(
+                                location?.latitude ?: currentCheckpoint.latitudeDeg,
+                                location?.longitude ?: currentCheckpoint.longitudeDeg
+                            ),
+                            flight_date = flightDateID
+                        )
+                        controller.supabaseHandler.uploadImage(
+                            dataRGB = null,
+                            dataThermal = image,
+                            image = imagMetaData
+                        )
+
+
+                    } catch (e: Exception) {
+                        println("Error: Couldn't upload photo")
+                    }
+
+                }
+
+            }
+        }
+    }
+
+    private fun captureThermalImage(hostName: String = "127.0.0.1", portNumber: Int = 15555): BufferedImage {
+        Socket(hostName, portNumber).use { socket ->
+            PrintWriter(socket.getOutputStream(), true).use { out ->
+                DataInputStream(socket.getInputStream()).use { dis ->
+                    out.print("capture")
+                    out.flush()
+                    val imageSize = 320 * 240 * 4 // 4 bytes per float
+                    val imageData = ByteArray(imageSize)
+                    dis.readFully(imageData)
+                    val array = decodeFloat2D(byteArray = imageData, 240, 320)
+                    val height = array.size
+                    val width = array[0].size
+                    val image = BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY)
+
+                    for (y in array.indices) {
+                        for (x in array[y].indices) {
+                            val color = (array[y][x] * 20).toInt()
+                            val rgb = color shl 16 or (color shl 8) or color
+                            image.setRGB(x, y, rgb)
+                        }
+                    }
+                    return image
+                }
+            }
         }
     }
 
