@@ -86,35 +86,49 @@ class SupabaseMessageHandler(private val controller: DroneController) {
     }
 
     fun startListening() = CoroutineScope(Dispatchers.IO).launch {
-        // Logic to listen to Supabase messages
         println("Subscribing...")
         val commandFlow = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
             table = "command"
         }
         channel.subscribe(blockUntilSubscribed = true)
-        isSubscribed = true
-        println("Subscribed!")
-        commandFlow.collect {
-            try {
-                val command = Json.decodeFromJsonElement<Command>(it.record)
-                if (command.aircraft != token) {
-                    return@collect
+        supabase.realtime.status.collect {
+            when (it) {
+                Realtime.Status.DISCONNECTED -> {
+                    isSubscribed = false
+                    println(it)
                 }
-                if (command.status != CommandStatus.PENDING) {
-                    return@collect
-                }
-                println("Received command: ${command.command}")
-                controller.sendCommandToDrone(command)
-                supabase.from("command").update({
-                    set("status", CommandStatus.EXECUTED)
-                }
-                ) {
-                    filter {
-                        eq("id", command.id)
+
+                Realtime.Status.CONNECTING -> println(it)
+                Realtime.Status.CONNECTED -> {
+                    isSubscribed = true
+                    println("Subscribed!")
+                    println("Send drone status!")
+                    controller.mavsdkHandler.startSendDroneStatusJob()
+                    println("Collect drone commands!")
+                    commandFlow.collect {
+                        try {
+                            val command = Json.decodeFromJsonElement<Command>(it.record)
+                            if (command.aircraft != token) {
+                                return@collect
+                            }
+                            if (command.status != CommandStatus.PENDING) {
+                                return@collect
+                            }
+                            println("Received command: ${command.command}")
+                            controller.sendCommandToDrone(command)
+                            supabase.from("command").update({
+                                set("status", CommandStatus.EXECUTED)
+                            }
+                            ) {
+                                filter {
+                                    eq("id", command.id)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("Error executing command: ${it.record}")
+                        }
                     }
                 }
-            } catch (e: Exception) {
-                println("Error executing command: ${it.record}")
             }
         }
     }

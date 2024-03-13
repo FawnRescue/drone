@@ -27,6 +27,7 @@ import kotlin.math.*
 class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
     private var drone: System? = null // Make 'drone' nullable
     private var statusReadJob: Job? = null
+    private var statusSendJob: Job? = null
     private val mutex = Mutex() // Add this line
 
     // Drone stats
@@ -41,7 +42,8 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private var location: Location? = null
     private var altitude: Float? = null
 
-    private fun readDroneStatus() {
+    private suspend fun startReadDroneStatusJob() {
+        statusReadJob?.cancelAndJoin()
         statusReadJob = CoroutineScope(Dispatchers.IO).launch {
             drone?.telemetry?.armed?.subscribe({ armed = it }, { runBlocking { reconnect() } })
             drone?.telemetry?.battery?.subscribe({
@@ -107,22 +109,33 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         } catch (e: Exception) {
             println("Cant Connect!")
         }
-        readDroneStatus()
-        while (isActive) {
-            val status = DroneStatus(
-                state = when (armed) {
-                    true -> when (inAir) {
-                        true -> DroneState.IN_FLIGHT
-                        false -> DroneState.ARMED
-                        null -> DroneState.NOT_CONNECTED
-                    }
+        startReadDroneStatusJob()
+    }
 
-                    false -> DroneState.IDLE
-                    null -> DroneState.NOT_CONNECTED
-                }, battery, location, altitude, numSatellites
-            )
-            sendDroneStatusToBackend(status)
-            sleep(100)
+    suspend fun startSendDroneStatusJob() {
+        statusSendJob?.cancelAndJoin()
+        statusSendJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive) {
+                try {
+                    val status = DroneStatus(
+                        state = when (armed) {
+                            true -> when (inAir) {
+                                true -> DroneState.IN_FLIGHT
+                                false -> DroneState.ARMED
+                                null -> DroneState.NOT_CONNECTED
+                            }
+
+                            false -> DroneState.IDLE
+                            null -> DroneState.NOT_CONNECTED
+                        }, battery, location, altitude, numSatellites
+                    )
+                    sendDroneStatusToBackend(status)
+                    sleep(100)
+                }catch (e: Exception){
+                    println("Error: Cant send status to Supabase!")
+                    sleep(500)
+                }
+            }
         }
     }
 
@@ -274,7 +287,6 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         if (mutex.tryLock()) {
             try {
                 println("Connection lost. Attempting to reconnect...")
-                statusReadJob?.cancelAndJoin() // Cancel any running status reading
                 drone = null // Clear out the old drone object
 
                 // Assuming sleep is a suspend function from kotlinx.coroutines package
@@ -282,7 +294,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 delay(1000)
 
                 drone = System(ConfigManager.getDronePath(), ConfigManager.getDronePort())
-                readDroneStatus()
+                startReadDroneStatusJob()
             } finally {
                 // Always release the lock when done.
                 mutex.unlock()
