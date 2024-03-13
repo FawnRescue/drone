@@ -1,5 +1,6 @@
 package supabase
 
+import credentials.ConfigManager
 import drone.DroneController
 import drone.DroneStatus
 import io.github.jan.supabase.createSupabaseClient
@@ -25,8 +26,8 @@ import kotlin.time.Duration.Companion.seconds
 
 class SupabaseMessageHandler(private val controller: DroneController) {
     private val supabase = createSupabaseClient(
-        supabaseUrl = "https://irvsopidchmqfxbdpxqt.supabase.co",   // TODO Use environment variables
-        supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlydnNvcGlkY2htcWZ4YmRweHF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDE3MDI4NDgsImV4cCI6MjAxNzI3ODg0OH0.oaKgHBwqw5WsYhM1_nYNJKGyidmEkIO6GaqjEWtVHI8" // TODO Use environment variables
+        supabaseUrl = ConfigManager.get("supabase_url") ?: "",
+        supabaseKey = ConfigManager.get("supabase_token") ?: ""
     ) {
         install(Realtime) {
             reconnectDelay = 5.seconds
