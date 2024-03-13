@@ -169,7 +169,6 @@ class SupabaseMessageHandler(private val controller: DroneController) {
     suspend inline fun <reified T : Any> sendData(event: String, data: T) {
         // Logic to send arbitrary data to the backend
         while (!isSubscribed) {
-            yield()
             delay(100)
         }
         channel.broadcast(event, data)

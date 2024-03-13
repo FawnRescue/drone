@@ -1,5 +1,6 @@
 package drone
 
+import com.github.sarxos.webcam.Webcam
 import credentials.ConfigManager
 import io.mavsdk.System
 import io.mavsdk.mission.Mission
@@ -42,43 +43,29 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
     private fun readDroneStatus() {
         statusReadJob = CoroutineScope(Dispatchers.IO).launch {
-            drone?.telemetry?.armed?.subscribe(
-                { armed = it },
-                { runBlocking { reconnect() } })
-            drone?.telemetry?.battery?.subscribe(
-                {
-                    battery = Battery(
-                        remainingPercent = if (it.remainingPercent?.isFinite() == true) it.remainingPercent else null,
-                        voltage = it.voltageV
-                    )
-                },
-                { runBlocking { reconnect() } })
-            drone?.telemetry?.position?.subscribe(
-                {
-                    location = Location(it.longitudeDeg, it.latitudeDeg)
-                    altitude = it.relativeAltitudeM
-                },
-                { runBlocking { reconnect() } })
-            drone?.telemetry?.gpsInfo?.subscribe(
-                {
-                    numSatellites = it.numSatellites
-                },
-                { runBlocking { reconnect() } })
-            drone?.telemetry?.inAir?.subscribe(
-                {
-                    inAir = it
-                },
-                { runBlocking { reconnect() } })
-            drone?.telemetry?.landedState?.subscribe(
-                {
-                    landedState = it
-                },
-                { runBlocking { reconnect() } })
-            drone?.telemetry?.flightMode?.subscribe(
-                {
-                    flightMode = it
-                },
-                { runBlocking { reconnect() } })
+            drone?.telemetry?.armed?.subscribe({ armed = it }, { runBlocking { reconnect() } })
+            drone?.telemetry?.battery?.subscribe({
+                battery = Battery(
+                    remainingPercent = if (it.remainingPercent?.isFinite() == true) it.remainingPercent else null,
+                    voltage = it.voltageV
+                )
+            }, { runBlocking { reconnect() } })
+            drone?.telemetry?.position?.subscribe({
+                location = Location(it.longitudeDeg, it.latitudeDeg)
+                altitude = it.relativeAltitudeM
+            }, { runBlocking { reconnect() } })
+            drone?.telemetry?.gpsInfo?.subscribe({
+                numSatellites = it.numSatellites
+            }, { runBlocking { reconnect() } })
+            drone?.telemetry?.inAir?.subscribe({
+                inAir = it
+            }, { runBlocking { reconnect() } })
+            drone?.telemetry?.landedState?.subscribe({
+                landedState = it
+            }, { runBlocking { reconnect() } })
+            drone?.telemetry?.flightMode?.subscribe({
+                flightMode = it
+            }, { runBlocking { reconnect() } })
         }
     }
 
@@ -132,11 +119,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
                     false -> DroneState.IDLE
                     null -> DroneState.NOT_CONNECTED
-                },
-                battery,
-                location,
-                altitude,
-                numSatellites
+                }, battery, location, altitude, numSatellites
             )
             sendDroneStatusToBackend(status)
             sleep(100)
@@ -166,6 +149,14 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
     private suspend fun continueMission(flightDateID: String) {
         val acceptanceRadius = 0.5f
+
+        var webcam: Webcam? = null
+        try {
+            webcam = Webcam.getDefault()
+            webcam.open() // Open the webcam
+        } catch (e: Exception) {
+            println("Error: Couldn't open RGB Camera!")
+        }
 
         val flightPlan = controller.supabaseHandler.getFlightPlan(flightDateID) ?: return
         val missionPlan = MissionPlan(flightPlan.checkpoints?.map {
@@ -205,10 +196,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 return@subscribe
             }
             val distanceM = haversine(
-                currentCheckpoint.latitudeDeg,
-                currentCheckpoint.longitudeDeg,
-                it.latitudeDeg,
-                it.longitudeDeg
+                currentCheckpoint.latitudeDeg, currentCheckpoint.longitudeDeg, it.latitudeDeg, it.longitudeDeg
             )
             if (distanceM < acceptanceRadius) {
                 checkpointReached = true
@@ -219,9 +207,13 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
                     try {
                         val name = UUID.randomUUID().toString()
-                        val image = captureThermalImage()
+
+                        val imageThermal: BufferedImage? = captureThermalImage()
+                        val imageRGB: BufferedImage? = webcam?.image
+
                         val imagMetaData = Image(
-                            thermal_path = "${name}-thermal.png",
+                            thermal_path = if (imageThermal != null) "${name}-thermal.png" else null,
+                            rgb_path = if (imageRGB != null) "${name}-rgb.png" else null,
                             location = LatLong(
                                 location?.latitude ?: currentCheckpoint.latitudeDeg,
                                 location?.longitude ?: currentCheckpoint.longitudeDeg
@@ -229,23 +221,18 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                             flight_date = flightDateID
                         )
                         controller.supabaseHandler.uploadImage(
-                            dataRGB = null,
-                            dataThermal = image,
-                            image = imagMetaData
+                            dataRGB = imageRGB, dataThermal = imageThermal, image = imagMetaData
                         )
-
 
                     } catch (e: Exception) {
                         println("Error: Couldn't upload photo")
                     }
-
                 }
-
             }
         }
     }
 
-    private fun captureThermalImage(hostName: String = "127.0.0.1", portNumber: Int = 15555): BufferedImage {
+    private fun captureThermalImage(hostName: String = "127.0.0.1", portNumber: Int = 15555): BufferedImage? {
         Socket(hostName, portNumber).use { socket ->
             PrintWriter(socket.getOutputStream(), true).use { out ->
                 DataInputStream(socket.getInputStream()).use { dis ->
@@ -254,19 +241,24 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                     val imageSize = 320 * 240 * 4 // 4 bytes per float
                     val imageData = ByteArray(imageSize)
                     dis.readFully(imageData)
-                    val array = decodeFloat2D(byteArray = imageData, 240, 320)
-                    val height = array.size
-                    val width = array[0].size
-                    val image = BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY)
+                    try {
+                        val array = decodeFloat2D(byteArray = imageData, 240, 320)
+                        val height = array.size
+                        val width = array[0].size
+                        val image = BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY)
 
-                    for (y in array.indices) {
-                        for (x in array[y].indices) {
-                            val color = (array[y][x] * 20).toInt()
-                            val rgb = color shl 16 or (color shl 8) or color
-                            image.setRGB(x, y, rgb)
+                        for (y in array.indices) {
+                            for (x in array[y].indices) {
+                                val color = (array[y][x] * 20).toInt()
+                                val rgb = color shl 16 or (color shl 8) or color
+                                image.setRGB(x, y, rgb)
+                            }
                         }
+                        return image
+                    } catch (e: Exception) {
+                        return null
                     }
-                    return image
+
                 }
             }
         }
