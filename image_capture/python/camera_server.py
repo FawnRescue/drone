@@ -1,25 +1,51 @@
+import cv2
+import numpy as np
 import socket
 import sys
 import signal
 from time import sleep
-from seekcamera import SeekCamera, SeekFrame, SeekCameraIOType, SeekCameraManager, SeekCameraManagerEvent, SeekCameraFrameFormat
+from seekcamera import (
+    SeekCamera,
+    SeekCameraFrame,
+    SeekCameraIOType,
+    SeekCameraManager,
+    SeekCameraManagerEvent,
+    SeekCameraFrameFormat,
+)
+
 
 class CameraServer:
     def __init__(self):
         self.capture_status = 0  # 0: no capture, 1: capture, 2: captured
-        self.frame = None
+        self.float_image: np.ndarray = None
+        self.grayscale_image: np.ndarray = None
+        self.rgb_image: np.ndarray = None
+        self.webcam = cv2.VideoCapture(0)  # Initialize the webcam at the start
 
-    def on_frame(self, camera: SeekCamera, camera_frame: SeekFrame, _):
-        """Callback fired whenever a new frame is available.
+        if not self.webcam.isOpened():
+            print("Cannot open webcam")
+            sys.exit(1)
 
-        Args:
-            camera: The camera instance triggering the frame.
-            camera_frame: The frame data.
-        """
+    def on_frame(self, camera: SeekCamera, camera_frame: SeekCameraFrame, _):
         if self.capture_status == 1:
-            self.frame = camera_frame.thermography_float
+            self.float_image = camera_frame.thermography_float
+            self.grayscale_image = camera_frame.grayscale
+            self.capture_rgb_image()  # Capture RGB image from webcam
             self.capture_status = 2
-            print(f"Frame available: {camera.chipid} (size: {self.frame.width}x{self.frame.height})")
+            print(
+                f"Frame available: {camera.chipid} (size: {self.float_image.width}x{self.float_image.height})"
+            )
+
+    def capture_rgb_image(self):
+        """Captures an RGB image from the initialized webcam."""
+        ret, frame = self.webcam.read()
+        if ret:
+            self.rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    def shutdown(self):
+        """Releases the webcam and other resources properly before shutting down."""
+        self.webcam.release()
+        print("Webcam released.")
 
     def on_event(self, camera: SeekCamera, event_type, event_status, _user_data):
         """Callback fired whenever a camera event occurs.
@@ -33,7 +59,10 @@ class CameraServer:
 
         if event_type == SeekCameraManagerEvent.CONNECT:
             camera.register_frame_available_callback(self.on_frame)
-            camera.capture_session_start(SeekCameraFrameFormat.THERMOGRAPHY_FLOAT)
+            camera.capture_session_start(
+                SeekCameraFrameFormat.THERMOGRAPHY_FLOAT
+                | SeekCameraFrameFormat.GRAYSCALE
+            )
 
         elif event_type == SeekCameraManagerEvent.DISCONNECT:
             camera.capture_session_stop()
@@ -48,6 +77,7 @@ class CameraServer:
             host: Host address to bind the server.
             port: Port number to listen on.
         """
+
         def graceful_exit(sig, frame):
             print("\nShutting down server...")
             sys.exit(0)
@@ -78,28 +108,46 @@ class CameraServer:
                     break
 
     def handle_client_data(self, data, conn):
-        """Handles data received from the client.
-
-        Args:
-            data: Data received from the client.
-            conn: Connection object to send data back to the client.
-        """
         command = data.decode().strip()
         if command == "capture":
-            if self.capture_status == 0:
-                self.capture_status = 1
-                while self.capture_status == 1:
-                    sleep(0.1)  # Adjust as necessary for your use case
-                if self.capture_status == 2:
-                    conn.sendall(self.frame.data.tobytes())  # Ensure 'frame' is a numpy array
-                    self.capture_status = 0
-                else:
-                    conn.sendall("ERROR".encode())
-            else:
-                conn.sendall("BUSY".encode())
+            self.capture_status = 1
+        elif command == "transferRGB":
+            while self.capture_status == 1:
+                sleep(0.1)
+            if self.capture_status == 2:
+                self.send_shape_and_data(conn, self.rgb_image)
+                self.rgb_image = None
+        elif command == "transferThermal":
+            while self.capture_status == 1:
+                sleep(0.1)
+            if self.capture_status == 2:
+                self.send_shape_and_data(conn, self.grayscale_image)
+                self.rgb_image = None
+        elif command == "transferFloat":
+            while self.capture_status == 1:
+                sleep(0.1)
+            if self.capture_status == 2:
+                self.send_shape_and_data(conn, self.float_image)
+                self.rgb_image = None
+    
+    def send_shape_and_data(self, conn, image_array):
+        height, width, channels = image_array.shape
+        # Pack height and width as two 32-bit integers
+        conn.sendall(height.to_bytes(4, byteorder='big'))
+        conn.sendall(width.to_bytes(4, byteorder='big'))
+        conn.sendall(channels.to_bytes(4, byteorder='big'))
+        # Then send the image data
+        conn.sendall(image_array.tobytes())
+
+
 
 if __name__ == "__main__":
     server = CameraServer()
-    with SeekCameraManager(SeekCameraIOType.USB) as manager:
-        manager.register_event_callback(server.on_event)
-        server.start_server()
+    try:
+        with SeekCameraManager(SeekCameraIOType.USB) as manager:
+            manager.register_event_callback(server.on_event)
+            server.start_server()
+    except KeyboardInterrupt:
+        print("Interrupt received, shutting down.")
+    finally:
+        server.shutdown()
