@@ -224,9 +224,6 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                             ),
                             flight_date = flightDateID
                         )
-                        FileOutputStream("received_image.png").use { fos ->
-                            fos.write(images!!.thermalGray)
-                        }
                         controller.supabaseHandler.uploadImage(
                             dataRGB = images?.rgbImage,
                             dataThermal = images?.thermalGray,
