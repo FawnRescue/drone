@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 data class Image(
     val rgb_path: String? = null,
     val thermal_path: String? = null,
+    val binary_path: String? = null,
     val location: LatLong,
     val flight_date: String
 )

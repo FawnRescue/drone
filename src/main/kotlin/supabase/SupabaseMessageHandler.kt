@@ -161,13 +161,16 @@ class SupabaseMessageHandler(private val controller: DroneController) {
         return flightPlan
     }
 
-    suspend fun uploadImage(dataRGB: BufferedImage?, dataThermal: BufferedImage?, image: Image) {
+    suspend fun uploadImage(dataRGB: ByteArray?, dataThermal: ByteArray?, dataFloat: ByteArray?, image: Image) {
         val bucket = supabase.storage.from("images")
         if (dataRGB != null) {
-            bucket.upload(image.rgb_path ?: "", bufferedImageToByteArray(dataRGB), upsert = false)
+            bucket.upload(image.rgb_path ?: "", dataRGB, upsert = false)
         }
         if (dataThermal != null) {
-            bucket.upload(image.thermal_path ?: "", bufferedImageToByteArray(dataThermal), upsert = false)
+            bucket.upload(image.thermal_path ?: "", dataThermal, upsert = false)
+        }
+        if (dataFloat != null) {
+            bucket.upload(image.binary_path ?: "", dataFloat, upsert = false)
         }
         supabase.postgrest.from("image").insert(image)
     }

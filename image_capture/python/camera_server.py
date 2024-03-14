@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import socket
 import sys
+import io
 import signal
 from time import sleep
 from seekcamera import (
@@ -19,8 +20,8 @@ class CameraServer:
         self.capture_status = 0  # 0: no capture, 1: capture, 2: captured
         self.float_image: np.ndarray = None
         self.grayscale_image: np.ndarray = None
-        self.rgb_image: np.ndarray = None
-        self.webcam = cv2.VideoCapture(0)  # Initialize the webcam at the start
+        self.bgr_image: np.ndarray = None
+        self.webcam = cv2.VideoCapture(1)  # Initialize the webcam at the start
 
         if not self.webcam.isOpened():
             print("Cannot open webcam")
@@ -40,7 +41,7 @@ class CameraServer:
         """Captures an RGB image from the initialized webcam."""
         ret, frame = self.webcam.read()
         if ret:
-            self.rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            self.bgr_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     def shutdown(self):
         """Releases the webcam and other resources properly before shutting down."""
@@ -110,25 +111,38 @@ class CameraServer:
     def handle_client_data(self, data, conn):
         command = data.decode().strip()
         if command == "capture":
+            print("Capture")
             self.capture_status = 1
+            status = 1
+            conn.sendall(status.to_bytes(4))
         elif command == "transferRGB":
             while self.capture_status == 1:
                 sleep(0.1)
             if self.capture_status == 2:
-                self.send_shape_and_data(conn, self.rgb_image)
-                self.rgb_image = None
+                print("transferRGB")
+                rgb_image_corrected = cv2.cvtColor(self.bgr_image, cv2.COLOR_BGR2RGB)
+                bytes =cv2.imencode('.png', rgb_image_corrected)[1].tobytes()
+                conn.sendall(len(bytes).to_bytes(4))
+                conn.sendall(bytes)
+                self.bgr_image = None
         elif command == "transferThermal":
             while self.capture_status == 1:
                 sleep(0.1)
             if self.capture_status == 2:
-                self.send_shape_and_data(conn, self.grayscale_image)
-                self.rgb_image = None
+                print("transferThermal")
+                bytes =cv2.imencode('.png', self.grayscale_image.data)[1].tobytes()
+                conn.sendall(len(bytes).to_bytes(4, byteorder='big'))
+                conn.sendall(bytes)
+                self.grayscale_image = None
         elif command == "transferFloat":
             while self.capture_status == 1:
                 sleep(0.1)
             if self.capture_status == 2:
-                self.send_shape_and_data(conn, self.float_image)
-                self.rgb_image = None
+                print("transferFloat")
+                bytes = self.float_image.data.tobytes()
+                conn.sendall(len(bytes).to_bytes(4, byteorder='big'))
+                conn.sendall(bytes)
+                self.float_image = None
     
     def send_shape_and_data(self, conn, image_array):
         height, width, channels = image_array.shape

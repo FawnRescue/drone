@@ -1,6 +1,5 @@
 package drone
 
-import com.github.sarxos.webcam.Webcam
 import credentials.ConfigManager
 import io.mavsdk.System
 import io.mavsdk.mission.Mission
@@ -14,8 +13,8 @@ import supabase.domain.Command
 import supabase.domain.CommandType
 import supabase.domain.Image
 import supabase.domain.LatLong
-import java.awt.image.BufferedImage
 import java.io.DataInputStream
+import java.io.FileOutputStream
 import java.io.PrintWriter
 import java.lang.Thread.sleep
 import java.net.Socket
@@ -23,6 +22,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.*
 import kotlin.math.*
+
 
 class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
     private var drone: System? = null // Make 'drone' nullable
@@ -131,7 +131,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                     )
                     sendDroneStatusToBackend(status)
                     sleep(100)
-                }catch (e: Exception){
+                } catch (e: Exception) {
                     println("Error: Cant send status to Supabase!")
                     sleep(500)
                 }
@@ -162,15 +162,6 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
     private suspend fun continueMission(flightDateID: String) {
         val acceptanceRadius = 0.5f
-
-        var webcam: Webcam? = null
-        try {
-            webcam = Webcam.getDefault()
-            webcam.open() // Open the webcam
-        } catch (e: Exception) {
-            println("Error: Couldn't open RGB Camera!")
-        }
-
         val flightPlan = controller.supabaseHandler.getFlightPlan(flightDateID) ?: return
         val missionPlan = MissionPlan(flightPlan.checkpoints?.map {
             Mission.MissionItem(
@@ -213,65 +204,76 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
             )
             if (distanceM < acceptanceRadius) {
                 checkpointReached = true
-                runBlocking {
+                CoroutineScope(Dispatchers.IO).launch {
                     println("Checkpoint Reached")
-                    delay(1000)
+                    sleep(1000)
                     println("Photo")
 
                     try {
                         val name = UUID.randomUUID().toString()
 
-                        val imageThermal: BufferedImage? = captureThermalImage()
-                        val imageRGB: BufferedImage? = webcam?.image
+                        val images = captureImages()
 
                         val imagMetaData = Image(
-                            thermal_path = if (imageThermal != null) "${name}-thermal.png" else null,
-                            rgb_path = if (imageRGB != null) "${name}-rgb.png" else null,
+                            thermal_path = if (images?.thermalGray != null) "${name}-thermal.png" else null,
+                            rgb_path = if (images?.rgbImage != null) "${name}-rgb.png" else null,
+                            binary_path = if (images?.thermalFloat != null) "${name}-float.bin" else null,
                             location = LatLong(
                                 location?.latitude ?: currentCheckpoint.latitudeDeg,
                                 location?.longitude ?: currentCheckpoint.longitudeDeg
                             ),
                             flight_date = flightDateID
                         )
+                        FileOutputStream("received_image.png").use { fos ->
+                            fos.write(images!!.thermalGray)
+                        }
                         controller.supabaseHandler.uploadImage(
-                            dataRGB = imageRGB, dataThermal = imageThermal, image = imagMetaData
+                            dataRGB = images?.rgbImage,
+                            dataThermal = images?.thermalGray,
+                            image = imagMetaData,
+                            dataFloat = images?.thermalFloat
                         )
 
                     } catch (e: Exception) {
+                        e.printStackTrace()
                         println("Error: Couldn't upload photo")
                     }
+
                 }
             }
         }
     }
 
-    private fun captureThermalImage(hostName: String = "127.0.0.1", portNumber: Int = 15555): BufferedImage? {
+    private fun captureImages(hostName: String = "127.0.0.1", portNumber: Int = 15555): ImagePacket? {
         Socket(hostName, portNumber).use { socket ->
             PrintWriter(socket.getOutputStream(), true).use { out ->
                 DataInputStream(socket.getInputStream()).use { dis ->
                     out.print("capture")
                     out.flush()
-                    val imageSize = 320 * 240 * 4 // 4 bytes per float
-                    val imageData = ByteArray(imageSize)
-                    dis.readFully(imageData)
-                    try {
-                        val array = decodeFloat2D(byteArray = imageData, 240, 320)
-                        val height = array.size
-                        val width = array[0].size
-                        val image = BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY)
-
-                        for (y in array.indices) {
-                            for (x in array[y].indices) {
-                                val color = (array[y][x] * 20).toInt()
-                                val rgb = color shl 16 or (color shl 8) or color
-                                image.setRGB(x, y, rgb)
-                            }
-                        }
-                        return image
-                    } catch (e: Exception) {
+                    val status = dis.readInt()
+                    if (status != 1) {
                         return null
                     }
 
+                    out.print("transferFloat")
+                    out.flush()
+                    val floatSize = dis.readInt()
+                    val floatData = ByteArray(floatSize)
+                    dis.readFully(floatData)
+
+                    out.print("transferThermal")
+                    out.flush()
+                    val thermalImageSize = dis.readInt()
+                    val thermalImageData = ByteArray(thermalImageSize)
+                    dis.readFully(thermalImageData)
+
+                    out.print("transferRGB")
+                    out.flush()
+                    val rgbImageSize = dis.readInt()
+                    val rgbImageData = ByteArray(rgbImageSize)
+                    dis.readFully(rgbImageData)
+
+                    return ImagePacket(floatData, thermalImageData, rgbImageData)
                 }
             }
         }
@@ -302,3 +304,5 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         }
     }
 }
+
+data class ImagePacket(val thermalFloat: ByteArray?, val thermalGray: ByteArray?, val rgbImage: ByteArray?)
