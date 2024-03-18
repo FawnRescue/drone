@@ -11,3 +11,11 @@
 - `cd PX4-Autopilot`
 - `make px4_sitl gz_x500`
 - run the code in this repo
+
+# Python Camera Server
+
+Install opencv
+```
+apt install python-opencv
+```
+Install seekcamera drivers

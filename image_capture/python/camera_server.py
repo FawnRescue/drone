@@ -21,7 +21,7 @@ class CameraServer:
         self.float_image: np.ndarray = None
         self.grayscale_image: np.ndarray = None
         self.bgr_image: np.ndarray = None
-        self.webcam = cv2.VideoCapture(1)  # Initialize the webcam at the start
+        self.webcam = cv2.VideoCapture(0)  # Initialize the webcam at the start
 
         if not self.webcam.isOpened():
             print("Cannot open webcam")
