@@ -1,0 +1,12 @@
+[Unit]
+Description=MAVLink Router
+Requires=multi-user.target mavsdk_server.service
+After=multi-user.target
+BindsTo=mavsdk_server.service
+
+[Service]
+ExecStart=/usr/bin/mavlink-routerd -t 8080 /dev/ttyACM0
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

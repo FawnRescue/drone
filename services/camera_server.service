@@ -1,0 +1,11 @@
+[Unit]
+Description=Drone Server
+After=network.target
+
+[Service]
+WorkingDirectory=/home/drone/drone/image_capture/python
+ExecStart=/usr/bin/python camera_server.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

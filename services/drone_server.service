@@ -1,0 +1,11 @@
+[Unit]
+Description=Drone Server
+After=network.target
+
+[Service]
+WorkingDirectory=/home/drone
+ExecStart=/usr/bin/java -jar drone-1.0-SNAPSHOT.jar
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

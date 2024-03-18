@@ -1,0 +1,11 @@
+[Unit]
+Description=MAVSDK Server
+After=network.target mavsdk_router.service
+Requires=mavsdk_router.service
+
+[Service]
+ExecStart=/home/drone/mavsdk/mavsdk_server_linux-armv7l-musl tcp://127.0.0.1:8080
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
