@@ -12,10 +12,34 @@
 - `make px4_sitl gz_x500`
 - run the code in this repo
 
-# Python Camera Server
+# Installation
+
+## Use our provided image
+
+## Manual installation
+
+### Python Camera Server
 
 Install opencv
 ```
 apt install python-opencv
 ```
 Install seekcamera drivers
+
+### Services
+
+Install mavlink router
+https://github.com/mavlink-router/mavlink-router
+
+
+Adjust path to executables in each of the services
+
+Copy services to
+```
+cp services/* /etc/systemd/system
+```
+Enable services
+```
+systemctl enable <service>
+```
+Restart the drone
