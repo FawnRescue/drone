@@ -1,5 +1,6 @@
+![Simulator_architecture drawio](https://github.com/FawnRescue/drone/assets/26716068/4ce48cc1-ea90-419a-9078-d92e5e07a810)
 
-- clone this repo
+- clone this <span style="color:red">repo</span>.
 - setup secrets.properties file
 # SETUP
 - Setup develeopment toolchain: https://docs.px4.io/main/en/dev_setup/dev_env.html
