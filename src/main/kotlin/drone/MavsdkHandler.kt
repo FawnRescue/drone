@@ -170,7 +170,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 10f,
                 5f,
                 false,
-                0f,
+                -90f,
                 0f,
                 Mission.MissionItem.CameraAction.TAKE_PHOTO,
                 2f,
