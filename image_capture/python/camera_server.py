@@ -130,7 +130,9 @@ class CameraServer:
                 sleep(0.1)
             if self.capture_status == 2:
                 print("transferThermal")
-                bytes =cv2.imencode('.png', self.grayscale_image.data)[1].tobytes()
+                # Rotate the image 180 degrees
+                rotated_image = cv2.rotate(self.grayscale_image.data, cv2.ROTATE_180)
+                bytes =cv2.imencode('.png', rotated_image)[1].tobytes()
                 conn.sendall(len(bytes).to_bytes(4, byteorder='big'))
                 conn.sendall(bytes)
                 self.grayscale_image = None
