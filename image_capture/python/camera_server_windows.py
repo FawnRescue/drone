@@ -13,7 +13,6 @@ from seekcamera import (
     SeekCameraManagerEvent,
     SeekCameraFrameFormat,
 )
-from picamera2 import Picamera2, Preview
 
 
 class CameraServer:
@@ -22,15 +21,11 @@ class CameraServer:
         self.float_image: np.ndarray = None
         self.grayscale_image: np.ndarray = None
         self.bgr_image: np.ndarray = None
-        self.tuning = Picamera2.load_tuning_file("imx708-b0311.json", "/opt/arducam")
+        self.webcam = cv2.VideoCapture(0)  # Initialize the webcam at the start
 
-        self.picam2 = Picamera2(tuning=self.tuning)
-        self.picam2.start()
-        #self.webcam = cv2.VideoCapture(0, apiPreference=cv2.CAP_V4L2)  # Initialize the webcam at the start
-
-        #if not self.webcam.isOpened():
-        #    print("Cannot open webcam")
-        #    sys.exit(1)
+        if not self.webcam.isOpened():
+            print("Cannot open webcam")
+            sys.exit(1)
 
     def on_frame(self, camera: SeekCamera, camera_frame: SeekCameraFrame, _):
         if self.capture_status == 1:
@@ -44,10 +39,9 @@ class CameraServer:
 
     def capture_rgb_image(self):
         """Captures an RGB image from the initialized webcam."""
-        #ret, frame = self.webcam.read()
-        #if ret:
-        #    self.bgr_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        self.bgr_image = self.picam2.capture_array()
+        ret, frame = self.webcam.read()
+        if ret:
+            self.bgr_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     def shutdown(self):
         """Releases the webcam and other resources properly before shutting down."""
@@ -120,16 +114,15 @@ class CameraServer:
             print("Capture")
             self.capture_status = 1
             status = 1
-            conn.sendall(status.to_bytes(4, byteorder='big'))
+            conn.sendall(status.to_bytes(4))
         elif command == "transferRGB":
             while self.capture_status == 1:
                 sleep(0.1)
             if self.capture_status == 2:
                 print("transferRGB")
                 rgb_image_corrected = cv2.cvtColor(self.bgr_image, cv2.COLOR_BGR2RGB)
-                rotated_image = cv2.rotate(rgb_image_corrected, cv2.ROTATE_180)
-                bytes =cv2.imencode('.png', rotated_image)[1].tobytes()
-                conn.sendall(len(bytes).to_bytes(4, byteorder='big'))
+                bytes =cv2.imencode('.png', rgb_image_corrected)[1].tobytes()
+                conn.sendall(len(bytes).to_bytes(4))
                 conn.sendall(bytes)
                 self.bgr_image = None
         elif command == "transferThermal":
