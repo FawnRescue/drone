@@ -44,6 +44,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private var location: Location? = null
     private var homeLocation: Location? = null
     private var altitude: Float? = null
+    private var heading: Double? = null
 
     private suspend fun startReadDroneStatusJob() {
         statusReadJob?.cancelAndJoin()
@@ -83,6 +84,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
             drone?.mission?.missionProgress?.subscribe({
                 numMissionItems = it.total
                 currentMissionItem = it.current
+            }, { runBlocking { reconnect() } })
+            drone?.telemetry?.heading?.subscribe({
+                heading = it.headingDeg
             }, { runBlocking { reconnect() } })
         }
     }
@@ -143,7 +147,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
                             false -> DroneState.IDLE
                             null -> DroneState.NOT_CONNECTED
-                        }, battery, location, homeLocation, altitude, numSatellites, currentMissionItem, numMissionItems
+                        }, battery, location, homeLocation, altitude, numSatellites, currentMissionItem, numMissionItems, heading
                     )
                     sendDroneStatusToBackend(status)
                     sleep(100)
