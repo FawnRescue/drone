@@ -39,13 +39,22 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private var battery: Battery? = null
 
     private var numSatellites: Int? = null
+    private var currentMissionItem: Int? = null
+    private var numMissionItems: Int? = null
     private var location: Location? = null
+    private var homeLocation: Location? = null
     private var altitude: Float? = null
 
     private suspend fun startReadDroneStatusJob() {
         statusReadJob?.cancelAndJoin()
         statusReadJob = CoroutineScope(Dispatchers.IO).launch {
-            drone?.telemetry?.armed?.subscribe({ armed = it }, { runBlocking { reconnect() } })
+            drone?.telemetry?.armed?.subscribe({
+                armed = it
+                if (!it){
+                    currentMissionItem = null
+                    numMissionItems = null
+                }
+            }, { runBlocking { reconnect() } })
             drone?.telemetry?.battery?.subscribe({
                 battery = Battery(
                     remainingPercent = if (it.remainingPercent?.isFinite() == true) it.remainingPercent else null,
@@ -67,6 +76,13 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
             }, { runBlocking { reconnect() } })
             drone?.telemetry?.flightMode?.subscribe({
                 flightMode = it
+            }, { runBlocking { reconnect() } })
+            drone?.telemetry?.home?.subscribe({
+                homeLocation = Location(it.longitudeDeg, it.latitudeDeg)
+            }, { runBlocking { reconnect() } })
+            drone?.mission?.missionProgress?.subscribe({
+                numMissionItems = it.total
+                currentMissionItem = it.current
             }, { runBlocking { reconnect() } })
         }
     }
@@ -127,7 +143,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
                             false -> DroneState.IDLE
                             null -> DroneState.NOT_CONNECTED
-                        }, battery, location, altitude, numSatellites
+                        }, battery, location, homeLocation, altitude, numSatellites, currentMissionItem, numMissionItems
                     )
                     sendDroneStatusToBackend(status)
                     sleep(100)
@@ -252,23 +268,38 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                         return null
                     }
 
-                    out.print("transferFloat")
-                    out.flush()
-                    val floatSize = dis.readInt()
-                    val floatData = ByteArray(floatSize)
-                    dis.readFully(floatData)
+                    var floatData: ByteArray? = null
+                    try {
+                        out.print("transferFloat")
+                        out.flush()
+                        val floatSize = dis.readInt()
+                        floatData = ByteArray(floatSize)
+                        dis.readFully(floatData)
+                    } catch (_: Exception) {
+                        println("Failed to retrieve Float data")
+                    }
 
-                    out.print("transferThermal")
-                    out.flush()
-                    val thermalImageSize = dis.readInt()
-                    val thermalImageData = ByteArray(thermalImageSize)
-                    dis.readFully(thermalImageData)
+                    var thermalImageData: ByteArray? = null
+                    try {
+                        out.print("transferThermal")
+                        out.flush()
+                        val thermalImageSize = dis.readInt()
+                        thermalImageData = ByteArray(thermalImageSize)
+                        dis.readFully(thermalImageData)
+                    } catch (_: Exception) {
+                        println("Failed to retrieve thermal image data")
+                    }
 
-                    out.print("transferRGB")
-                    out.flush()
-                    val rgbImageSize = dis.readInt()
-                    val rgbImageData = ByteArray(rgbImageSize)
-                    dis.readFully(rgbImageData)
+                    var rgbImageData: ByteArray? = null
+                    try {
+                        out.print("transferRGB")
+                        out.flush()
+                        val rgbImageSize = dis.readInt()
+                        rgbImageData = ByteArray(rgbImageSize)
+                        dis.readFully(rgbImageData)
+                    } catch (_: Exception) {
+                        println("Failed to retrieve rgb image data")
+                    }
 
                     return ImagePacket(floatData, thermalImageData, rgbImageData)
                 }
