@@ -3,6 +3,7 @@ package drone
 import credentials.ConfigManager
 import io.mavsdk.System
 import io.mavsdk.mission.Mission
+import io.mavsdk.mission.Mission.MissionItem
 import io.mavsdk.mission.Mission.MissionPlan
 import io.mavsdk.telemetry.Telemetry.FlightMode
 import io.mavsdk.telemetry.Telemetry.LandedState
@@ -46,12 +47,20 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private var altitude: Float? = null
     private var heading: Double? = null
 
+    private var missionPlan: List<MissionItem> = emptyList()
+    private var currentCheckpoint: MissionItem? = null
+    private var checkpointReached: Boolean = false
+    private var flightDateID: String? = null
+    private var homeAltitude: Float? = null
+
+    private var idleCounter: Int = 0
+
     private suspend fun startReadDroneStatusJob() {
         statusReadJob?.cancelAndJoin()
         statusReadJob = CoroutineScope(Dispatchers.IO).launch {
             drone?.telemetry?.armed?.subscribe({
                 armed = it
-                if (!it){
+                if (!it) {
                     currentMissionItem = null
                     numMissionItems = null
                 }
@@ -65,6 +74,71 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
             drone?.telemetry?.position?.subscribe({
                 location = Location(it.longitudeDeg, it.latitudeDeg)
                 altitude = it.relativeAltitudeM
+                if (currentCheckpoint == null || checkpointReached) {
+                    return@subscribe
+                }
+                currentCheckpoint?.let { checkpoint ->
+                    val distanceM = haversine(
+                        checkpoint.latitudeDeg, checkpoint.longitudeDeg, it.latitudeDeg, it.longitudeDeg
+                    )
+                    if (distanceM < checkpoint.acceptanceRadiusM) {
+                        checkpointReached = true
+                        CoroutineScope(Dispatchers.IO).launch {
+                            println("Checkpoint Reached")
+                            sleep(500)
+                            println("Photo")
+
+                            try {
+                                val name = UUID.randomUUID().toString()
+
+                                val images = captureImages()
+
+                                val imagMetaData = Image(
+                                    thermal_path = if (images?.thermalGray != null) "${name}-thermal.png" else null,
+                                    rgb_path = if (images?.rgbImage != null) "${name}-rgb.png" else null,
+                                    binary_path = if (images?.thermalFloat != null) "${name}-float.bin" else null,
+                                    location = LatLong(
+                                        location?.latitude ?: it.latitudeDeg,
+                                        location?.longitude ?: it.longitudeDeg
+                                    ),
+                                    flight_date = flightDateID!!
+                                )
+                                controller.supabaseHandler.uploadImage(
+                                    dataRGB = images?.rgbImage,
+                                    dataThermal = images?.thermalGray,
+                                    image = imagMetaData,
+                                    dataFloat = images?.thermalFloat
+                                )
+
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                println("Error: Couldn't upload photo")
+                            }
+                            currentMissionItem?.let { index ->
+                                if (index == numMissionItems) {
+                                    currentMissionItem = null
+                                    currentCheckpoint = null
+                                    numMissionItems = null
+                                    drone?.action?.returnToLaunch()?.blockingAwait()
+                                }
+                                currentMissionItem = index + 1
+                                currentCheckpoint = missionPlan[index]
+                                checkpointReached = false
+                                drone?.action?.setCurrentSpeed(checkpoint.speedMS)?.blockingAwait()
+                                currentCheckpoint?.let { checkpoint ->
+                                    drone?.action?.gotoLocation(
+                                        checkpoint.latitudeDeg,
+                                        checkpoint.longitudeDeg,
+                                        (homeAltitude ?: 0f) + checkpoint.relativeAltitudeM,
+                                        checkpoint.yawDeg
+                                    )?.blockingAwait()
+                                }
+                            }
+                        }
+                    }
+                }
+
+
             }, { runBlocking { reconnect() } })
             drone?.telemetry?.gpsInfo?.subscribe({
                 numSatellites = it.numSatellites
@@ -80,10 +154,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
             }, { runBlocking { reconnect() } })
             drone?.telemetry?.home?.subscribe({
                 homeLocation = Location(it.longitudeDeg, it.latitudeDeg)
-            }, { runBlocking { reconnect() } })
-            drone?.mission?.missionProgress?.subscribe({
-                numMissionItems = it.total
-                currentMissionItem = it.current
+                homeAltitude = it.absoluteAltitudeM
             }, { runBlocking { reconnect() } })
             drone?.telemetry?.heading?.subscribe({
                 heading = it.headingDeg
@@ -147,10 +218,29 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
                             false -> DroneState.IDLE
                             null -> DroneState.NOT_CONNECTED
-                        }, battery, location, homeLocation, altitude, numSatellites, currentMissionItem, numMissionItems, heading
+                        },
+                        battery,
+                        location,
+                        homeLocation,
+                        altitude,
+                        numSatellites,
+                        currentMissionItem,
+                        numMissionItems,
+                        heading
                     )
-                    sendDroneStatusToBackend(status)
-                    sleep(100)
+                    if (idleCounter == 0) {
+                        sendDroneStatusToBackend(status)
+                    }
+                    if (status.state == DroneState.IDLE) {
+                        if (idleCounter >= 10) {
+                            idleCounter = 0
+                        } else {
+                            idleCounter++
+                        }
+                    } else {
+                        idleCounter = 0
+                    }
+                    sleep(300)
                 } catch (e: Exception) {
                     println("Error: Cant send status to Supabase!")
                     sleep(500)
@@ -181,85 +271,43 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
 
     private suspend fun continueMission(flightDateID: String) {
+        this.flightDateID = flightDateID
         val acceptanceRadius = 0.5f
         val flightPlan = controller.supabaseHandler.getFlightPlan(flightDateID) ?: return
-        val missionPlan = MissionPlan(flightPlan.checkpoints?.map {
-            Mission.MissionItem(
+        missionPlan = flightPlan.checkpoints?.map {
+            MissionItem(
                 it.latitude,
                 it.longitude,
+                15f,
                 10f,
-                5f,
                 false,
                 -90f,
                 0f,
-                Mission.MissionItem.CameraAction.TAKE_PHOTO,
+                MissionItem.CameraAction.TAKE_PHOTO,
                 2f,
                 0.0,
                 acceptanceRadius,
                 0f,
                 0f,
-                Mission.MissionItem.VehicleAction.NONE
+                MissionItem.VehicleAction.NONE
             )
-        } ?: emptyList())
-        drone?.mission?.uploadMission(missionPlan)?.blockingAwait()
-        drone?.mission?.setReturnToLaunchAfterMission(true)?.blockingAwait()
-        drone?.mission?.setCurrentMissionItem(0)?.blockingAwait() // TODO: use actual checkpoint
-        drone?.mission?.startMission()?.blockingAwait()
+        } ?: emptyList()
 
-        var currentCheckpoint = missionPlan.missionItems[0]
-        var checkpointReached = false
-        drone?.mission?.missionProgress?.subscribe {
-            if (currentCheckpoint == missionPlan.missionItems[it.current]) {
-                return@subscribe
-            }
-            currentCheckpoint = missionPlan.missionItems[it.current]
-            checkpointReached = false
-        }
-        drone?.telemetry?.position?.subscribe {
-            if (checkpointReached) {
-                return@subscribe
-            }
-            val distanceM = haversine(
-                currentCheckpoint.latitudeDeg, currentCheckpoint.longitudeDeg, it.latitudeDeg, it.longitudeDeg
-            )
-            if (distanceM < acceptanceRadius) {
-                checkpointReached = true
-                CoroutineScope(Dispatchers.IO).launch {
-                    println("Checkpoint Reached")
-                    sleep(1000)
-                    println("Photo")
-
-                    try {
-                        val name = UUID.randomUUID().toString()
-
-                        val images = captureImages()
-
-                        val imagMetaData = Image(
-                            thermal_path = if (images?.thermalGray != null) "${name}-thermal.png" else null,
-                            rgb_path = if (images?.rgbImage != null) "${name}-rgb.png" else null,
-                            binary_path = if (images?.thermalFloat != null) "${name}-float.bin" else null,
-                            location = LatLong(
-                                location?.latitude ?: currentCheckpoint.latitudeDeg,
-                                location?.longitude ?: currentCheckpoint.longitudeDeg
-                            ),
-                            flight_date = flightDateID
-                        )
-                        controller.supabaseHandler.uploadImage(
-                            dataRGB = images?.rgbImage,
-                            dataThermal = images?.thermalGray,
-                            image = imagMetaData,
-                            dataFloat = images?.thermalFloat
-                        )
-
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        println("Error: Couldn't upload photo")
-                    }
-
-                }
-            }
+        currentMissionItem = 0
+        numMissionItems = missionPlan.size
+        currentCheckpoint = missionPlan[0]
+        checkpointReached = false
+        currentCheckpoint?.let { checkpoint ->
+            drone?.action?.setCurrentSpeed(checkpoint.speedMS)?.blockingAwait()
+            drone?.action?.gotoLocation(
+                checkpoint.latitudeDeg,
+                checkpoint.longitudeDeg,
+                (homeAltitude ?: 0f) + checkpoint.relativeAltitudeM,
+                checkpoint.yawDeg
+            )?.blockingAwait()
         }
     }
+
 
     private fun captureImages(hostName: String = "127.0.0.1", portNumber: Int = 15555): ImagePacket? {
         Socket(hostName, portNumber).use { socket ->
