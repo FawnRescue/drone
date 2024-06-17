@@ -267,9 +267,21 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 CommandType.FLY2CHECKPOINT -> TODO()
                 CommandType.CAPTURE_IMAGE -> TODO()
                 CommandType.LOITER -> drone?.action?.takeoff()?.blockingAwait()
-                CommandType.RTH -> drone?.action?.returnToLaunch()?.blockingAwait()
-                CommandType.KILL -> drone?.action?.kill()?.blockingAwait()
-                CommandType.ELAND -> drone?.action?.land()?.blockingAwait()
+                CommandType.RTH -> {
+                    resetMission()
+                    drone?.action?.returnToLaunch()?.blockingAwait()
+                }
+
+                CommandType.KILL -> {
+                    resetMission()
+                    drone?.action?.kill()?.blockingAwait()
+                }
+
+                CommandType.ELAND -> {
+                    resetMission()
+                    drone?.action?.land()?.blockingAwait()
+                }
+
                 CommandType.CONTINUE -> CoroutineScope(Dispatchers.IO).launch { continueMission(command.context) }
             }
         } catch (e: Exception) {
@@ -317,6 +329,14 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 checkpoint.yawDeg
             )?.blockingAwait()
         }
+    }
+
+    fun resetMission() {
+        currentMissionItem = null
+        numMissionItems = null
+        currentCheckpoint = null
+        checkpointReached = false
+        missionPlan = emptyList()
     }
 
 

@@ -6,11 +6,13 @@ import org.geotools.geometry.DirectPosition2D
 import org.opengis.coverage.grid.GridCoordinates
 import org.opengis.geometry.DirectPosition
 import org.opengis.referencing.crs.CoordinateReferenceSystem
+import java.awt.image.Raster
 import java.io.File
 
 class GeoTIFFReader(tiffPath: String) {
     private val coverage: GridCoverage2D
     private val crs: CoordinateReferenceSystem
+    private val raster: Raster
 
     init {
         val file = File(tiffPath)
@@ -22,6 +24,7 @@ class GeoTIFFReader(tiffPath: String) {
         val reader: GridCoverage2DReader = format.getReader(file)
         coverage = reader.read()
         crs = coverage.coordinateReferenceSystem2D
+        raster = coverage.renderedImage.data
     }
 
     fun getHeightAtCoordinates(lon: Double, lat: Double): Double {
@@ -34,7 +37,7 @@ class GeoTIFFReader(tiffPath: String) {
         val x = gridCoordinates.getCoordinateValue(0)
         val y = gridCoordinates.getCoordinateValue(1)
 
-        val raster = coverage.renderedImage.data
+
         return raster.getSampleDouble(x, y, 0)
     }
 }
