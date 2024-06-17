@@ -1,10 +1,9 @@
 package drone
 
+import GeoTIFFReader
 import credentials.ConfigManager
 import io.mavsdk.System
-import io.mavsdk.mission.Mission
 import io.mavsdk.mission.Mission.MissionItem
-import io.mavsdk.mission.Mission.MissionPlan
 import io.mavsdk.telemetry.Telemetry.FlightMode
 import io.mavsdk.telemetry.Telemetry.LandedState
 import kotlinx.coroutines.*
@@ -15,7 +14,6 @@ import supabase.domain.CommandType
 import supabase.domain.Image
 import supabase.domain.LatLong
 import java.io.DataInputStream
-import java.io.FileOutputStream
 import java.io.PrintWriter
 import java.lang.Thread.sleep
 import java.net.Socket
@@ -26,6 +24,8 @@ import kotlin.math.*
 
 
 class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
+    private val tiffPath = "height_data.tif"
+    private var heightReader: GeoTIFFReader? = null
     private var drone: System? = null // Make 'drone' nullable
     private var statusReadJob: Job? = null
     private var statusSendJob: Job? = null
@@ -47,13 +47,21 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private var altitude: Float? = null
     private var heading: Double? = null
 
-    private var missionPlan: List<MissionItem> = emptyList()
-    private var currentCheckpoint: MissionItem? = null
+    private var missionPlan: List<Checkpoint> = emptyList()
+    private var currentCheckpoint: Checkpoint? = null
     private var checkpointReached: Boolean = false
     private var flightDateID: String? = null
     private var homeAltitude: Float? = null
 
     private var idleCounter: Int = 0
+
+    init {
+        try {
+            heightReader = GeoTIFFReader(tiffPath)
+        } catch (_: Exception) {
+            println("Exception initializing heightReader from $tiffPath")
+        }
+    }
 
     private suspend fun startReadDroneStatusJob() {
         statusReadJob?.cancelAndJoin()
@@ -79,9 +87,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 }
                 currentCheckpoint?.let { checkpoint ->
                     val distanceM = haversine(
-                        checkpoint.latitudeDeg, checkpoint.longitudeDeg, it.latitudeDeg, it.longitudeDeg
+                        checkpoint.latitude, checkpoint.longitude, it.latitudeDeg, it.longitudeDeg
                     )
-                    if (distanceM < checkpoint.acceptanceRadiusM) {
+                    if (distanceM < checkpoint.acceptanceRadius) {
                         checkpointReached = true
                         CoroutineScope(Dispatchers.IO).launch {
                             println("Checkpoint Reached")
@@ -127,9 +135,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                                 drone?.action?.setCurrentSpeed(checkpoint.speedMS)?.blockingAwait()
                                 currentCheckpoint?.let { checkpoint ->
                                     drone?.action?.gotoLocation(
-                                        checkpoint.latitudeDeg,
-                                        checkpoint.longitudeDeg,
-                                        (homeAltitude ?: 0f) + checkpoint.relativeAltitudeM,
+                                        checkpoint.latitude,
+                                        checkpoint.longitude,
+                                        checkpoint.absoluteHeight,
                                         checkpoint.yawDeg
                                     )?.blockingAwait()
                                 }
@@ -273,23 +281,26 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private suspend fun continueMission(flightDateID: String) {
         this.flightDateID = flightDateID
         val acceptanceRadius = 0.5f
+        val missionHeight = 15f
         val flightPlan = controller.supabaseHandler.getFlightPlan(flightDateID) ?: return
         missionPlan = flightPlan.checkpoints?.map {
-            MissionItem(
-                it.latitude,
-                it.longitude,
-                15f,
-                10f,
-                false,
-                -90f,
-                0f,
-                MissionItem.CameraAction.TAKE_PHOTO,
-                2f,
-                0.0,
-                acceptanceRadius,
-                0f,
-                0f,
-                MissionItem.VehicleAction.NONE
+            var height = homeAltitude ?: 0f
+            heightReader?.let { reader ->
+                try {
+                    height = reader.getHeightAtCoordinates(it.longitude, it.latitude).toFloat()
+                } catch (_: Exception) {
+                    println("Error reading height: $it")
+                }
+            }
+            height += missionHeight
+
+            Checkpoint(
+                latitude = it.latitude,
+                longitude = it.longitude,
+                yawDeg = 0f,
+                absoluteHeight = missionHeight,
+                speedMS = 10f,
+                acceptanceRadius = acceptanceRadius
             )
         } ?: emptyList()
 
@@ -300,9 +311,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         currentCheckpoint?.let { checkpoint ->
             drone?.action?.setCurrentSpeed(checkpoint.speedMS)?.blockingAwait()
             drone?.action?.gotoLocation(
-                checkpoint.latitudeDeg,
-                checkpoint.longitudeDeg,
-                (homeAltitude ?: 0f) + checkpoint.relativeAltitudeM,
+                checkpoint.latitude,
+                checkpoint.longitude,
+                checkpoint.absoluteHeight,
                 checkpoint.yawDeg
             )?.blockingAwait()
         }
