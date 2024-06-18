@@ -1,9 +1,7 @@
 package drone
 
-import GeoTIFFReader
 import credentials.ConfigManager
 import io.mavsdk.System
-import io.mavsdk.mission.Mission.MissionItem
 import io.mavsdk.telemetry.Telemetry.FlightMode
 import io.mavsdk.telemetry.Telemetry.LandedState
 import kotlinx.coroutines.*
@@ -24,8 +22,8 @@ import kotlin.math.*
 
 
 class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
-    private val tiffPath = "height_data.tif"
-    private var heightReader: GeoTIFFReader? = null
+    private val tiffPath = "output_SRTMGL1.asc"
+    private var heightGrid: GridData? = null
     private var drone: System? = null // Make 'drone' nullable
     private var statusReadJob: Job? = null
     private var statusSendJob: Job? = null
@@ -57,9 +55,10 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
     init {
         try {
-            heightReader = GeoTIFFReader(tiffPath)
-        } catch (_: Exception) {
+            heightGrid = readAscFile(tiffPath)
+        } catch (e: Exception) {
             println("Exception initializing heightReader from $tiffPath")
+            e.printStackTrace()
         }
     }
 
@@ -297,9 +296,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         val flightPlan = controller.supabaseHandler.getFlightPlan(flightDateID) ?: return
         missionPlan = flightPlan.checkpoints?.map {
             var height = homeAltitude ?: 0f
-            heightReader?.let { reader ->
+            heightGrid?.let { grid ->
                 try {
-                    height = reader.getHeightAtCoordinates(it.longitude, it.latitude).toFloat()
+                    height = getElevationAtCoordinate(grid, it.longitude, it.latitude)!!.toFloat()
                 } catch (_: Exception) {
                     println("Error reading height: $it")
                 }

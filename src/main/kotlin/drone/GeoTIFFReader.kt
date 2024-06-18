@@ -1,60 +1,91 @@
-import org.geotools.coverage.grid.GridCoverage2D
-import org.geotools.coverage.grid.io.GridCoverage2DReader
-import org.geotools.coverage.grid.io.GridFormatFinder
-import org.geotools.coverage.grid.io.AbstractGridFormat
-import org.geotools.geometry.DirectPosition2D
-import org.opengis.coverage.grid.GridCoordinates
-import org.opengis.geometry.DirectPosition
-import org.opengis.referencing.crs.CoordinateReferenceSystem
-import java.awt.image.Raster
+package drone
+
 import java.io.File
+// https://portal.opentopography.org/raster?opentopoID=OTSRTM.082015.4326.1
 
-class GeoTIFFReader(tiffPath: String) {
-    private val coverage: GridCoverage2D
-    private val crs: CoordinateReferenceSystem
-    private val raster: Raster
+data class GridData(
+    val ncols: Int,
+    val nrows: Int,
+    val xllcorner: Double,
+    val yllcorner: Double,
+    val cellsize: Double,
+    val nodataValue: Double,
+    val elevationData: List<List<Double>>
+)
 
-    init {
-        val file = File(tiffPath)
-        if (!file.exists()) {
-            throw IllegalArgumentException("GeoTIFF file does not exist at path: $tiffPath")
-        }
+fun readAscFile(filePath: String): GridData {
+    val lines = File(filePath).readLines()
+    val header = mutableMapOf<String, String>()
+    var index = 0
 
-        val format: AbstractGridFormat = GridFormatFinder.findFormat(file)
-        val reader: GridCoverage2DReader = format.getReader(file)
-        coverage = reader.read()
-        crs = coverage.coordinateReferenceSystem2D
-        raster = coverage.renderedImage.data
+    // Read the header
+    while (index < lines.size && lines[index].matches(Regex("^[a-zA-Z].*"))) {
+        val parts = lines[index].split(Regex("\\s+"))
+        header[parts[0].lowercase()] = parts[1]
+        index++
     }
 
-    fun getHeightAtCoordinates(lon: Double, lat: Double): Double {
-        val position: DirectPosition = DirectPosition2D(crs, lon, lat)
-        if (!coverage.envelope2D.contains(lon, lat)) {
-            throw IllegalArgumentException("Coordinate ($lon, $lat) is outside coverage.")
+    // Parse header values
+    val ncols = header["ncols"]!!.toInt()
+    val nrows = header["nrows"]!!.toInt()
+    val xllcorner = header["xllcorner"]!!.toDouble()
+    val yllcorner = header["yllcorner"]!!.toDouble()
+    val cellsize = header["cellsize"]!!.toDouble()
+    val nodataValue = header["nodata_value"]!!.toDouble()
+
+    // Read the elevation data
+    val elevationData = mutableListOf<List<Double>>()
+    while (index < lines.size) {
+        if (lines[index].isEmpty()) {
+            continue
         }
+        val row = lines[index].split(Regex(" ")).filter { it.isNotEmpty() }.map { it.toDouble() }
+        elevationData.add(row)
+        index++
+    }
 
-        val gridCoordinates: GridCoordinates = coverage.gridGeometry.worldToGrid(position)
-        val x = gridCoordinates.getCoordinateValue(0)
-        val y = gridCoordinates.getCoordinateValue(1)
+    return GridData(ncols, nrows, xllcorner, yllcorner, cellsize, nodataValue, elevationData)
+}
 
+fun readPrjFile(filePath: String): String {
+    return File(filePath).readText()
+}
 
-        return raster.getSampleDouble(x, y, 0)
+fun getGridIndices(gridData: GridData, latitude: Double, longitude: Double): Pair<Int, Int>? {
+    // Calculate the row and column in the grid
+    val col = ((longitude - gridData.xllcorner) / gridData.cellsize).toInt()
+    val row = ((gridData.yllcorner + gridData.nrows * gridData.cellsize - latitude) / gridData.cellsize).toInt()
+
+    // Check if the indices are within the grid bounds
+    return if (col in 0 until gridData.ncols && row in 0 until gridData.nrows) {
+        Pair(row, col)
+    } else {
+        null
     }
 }
 
-fun main() {
-    try {
-        val tiffPath = "height_data.tif"
-        val coordinates = arrayOf(
-            doubleArrayOf(9.971198, 51.578245)
-        )
+fun getElevationAtCoordinate(gridData: GridData, latitude: Double, longitude: Double): Double? {
+    val indices = getGridIndices(gridData, latitude, longitude) ?: return null
+    val (row, col) = indices
 
-        val reader = GeoTIFFReader(tiffPath)
-        for (coordinate in coordinates) {
-            val height = reader.getHeightAtCoordinates(coordinate[0], coordinate[1])
-            println("Height at (${coordinate[0]}, ${coordinate[1]}): $height")
-        }
-    } catch (e: Exception) {
-        e.printStackTrace()
+    return gridData.elevationData[row][col]
+}
+
+
+fun main() {
+    val ascFilePath = "output_SRTMGL1.asc"
+
+    val gridData = readAscFile(ascFilePath)
+
+    // Example coordinates (latitude, longitude)
+    val latitude = 51.578245
+    val longitude = 9.971198
+
+    val elevation = getElevationAtCoordinate(gridData, latitude, longitude)
+
+    if (elevation != null) {
+        println("Elevation at ($latitude, $longitude): $elevation")
+    } else {
+        println("Coordinates are out of bounds")
     }
 }

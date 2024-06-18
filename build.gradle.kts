@@ -32,15 +32,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
     implementation("com.google.code.gson:gson:2.8.9")
     implementation("com.github.sarxos:webcam-capture:0.3.12")
-
-    implementation("org.geotools:gt-main:25.2")
-    implementation("org.geotools:gt-coverage:25.2")
-    implementation("org.geotools:gt-referencing:25.2")
-    implementation("org.geotools:gt-geotiff:25.2")
-    implementation("org.geotools:gt-metadata:25.2")
-    implementation("org.geotools:gt-shapefile:25.2")
-    implementation("org.geotools:gt-wms:25.2")
-    implementation("org.geotools:gt-epsg-hsql:25.2")
 }
 
 tasks.test {
