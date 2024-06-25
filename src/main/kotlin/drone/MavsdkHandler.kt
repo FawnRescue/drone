@@ -298,7 +298,8 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
             var height = homeAltitude ?: 0f
             heightGrid?.let { grid ->
                 try {
-                    height = getElevationAtCoordinate(grid, it.longitude, it.latitude)!!.toFloat()
+                    height = getElevationAtCoordinate(grid, it.latitude, it.longitude)!!.toFloat()
+                    println("Height: $height")
                 } catch (_: Exception) {
                     println("Error reading height: $it")
                 }
@@ -309,7 +310,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 latitude = it.latitude,
                 longitude = it.longitude,
                 yawDeg = 0f,
-                absoluteHeight = missionHeight,
+                absoluteHeight = height,
                 speedMS = 10f,
                 acceptanceRadius = acceptanceRadius
             )
@@ -321,6 +322,16 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         checkpointReached = false
         currentCheckpoint?.let { checkpoint ->
             drone?.action?.setCurrentSpeed(checkpoint.speedMS)?.blockingAwait()
+            homeLocation?.let {
+                homeAltitude?.let { altitude ->
+                    println("Raising Altitude...")
+                    drone?.action?.gotoLocation(
+                        it.latitude, it.longitude,
+                        altitude + 15f, 0f
+                    )?.blockingAwait()
+                }
+            }
+            sleep(2000)
             drone?.action?.gotoLocation(
                 checkpoint.latitude,
                 checkpoint.longitude,
