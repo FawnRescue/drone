@@ -22,6 +22,7 @@ class SupabaseLoginHandler(private val supabase: SupabaseClient) {
         supabase.auth.verifyEmailOtp(type = OtpType.Email.MAGIC_LINK, email = email, token = otp)
     }
 
+
     suspend fun debugLogin(debugPassword: String, debugEmail: String) {
         supabase.auth.signInWith(Email) {
             email = debugEmail
