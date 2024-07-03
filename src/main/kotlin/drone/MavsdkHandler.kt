@@ -2,23 +2,24 @@ package drone
 
 import credentials.ConfigManager
 import io.mavsdk.System
+import io.mavsdk.telemetry.Telemetry
 import io.mavsdk.telemetry.Telemetry.FlightMode
 import io.mavsdk.telemetry.Telemetry.LandedState
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.sync.Mutex
 import supabase.SupabaseMessageHandler
 import supabase.domain.Command
 import supabase.domain.CommandType
 import supabase.domain.Image
 import supabase.domain.LatLong
+import utils.haversine
 import java.io.DataInputStream
 import java.io.PrintWriter
 import java.lang.Thread.sleep
 import java.net.Socket
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.*
-import kotlin.math.*
 
 
 class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
@@ -27,7 +28,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private var drone: System? = null // Make 'drone' nullable
     private var statusReadJob: Job? = null
     private var statusSendJob: Job? = null
-    private val mutex = Mutex() // Add this line
+    private var imageUploadJob: Job? = null
+    private val connectionRetryMutex = Mutex()
+    private val imageQueue: Channel<ImagePacket> = Channel()
 
     // Drone stats
     private var armed: Boolean? = null
@@ -79,72 +82,10 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 )
             }, { runBlocking { reconnect() } })
             drone?.telemetry?.position?.subscribe({
-                location = Location(it.longitudeDeg, it.latitudeDeg)
-                altitude = it.relativeAltitudeM
                 if (currentCheckpoint == null || checkpointReached) {
                     return@subscribe
                 }
-                currentCheckpoint?.let { checkpoint ->
-                    val distanceM = haversine(
-                        checkpoint.latitude, checkpoint.longitude, it.latitudeDeg, it.longitudeDeg
-                    )
-                    if (distanceM < checkpoint.acceptanceRadius) {
-                        checkpointReached = true
-                        CoroutineScope(Dispatchers.IO).launch {
-                            println("Checkpoint Reached")
-                            sleep(500)
-                            println("Photo")
-
-                            try {
-                                val name = UUID.randomUUID().toString()
-
-                                val images = captureImages()
-
-                                val metadata = Image(
-                                    thermal_path = if (images?.thermalGray != null) "${name}-thermal.png" else null,
-                                    rgb_path = if (images?.rgbImage != null) "${name}-rgb.png" else null,
-                                    binary_path = if (images?.thermalFloat != null) "${name}-float.bin" else null,
-                                    location = LatLong(
-                                        location?.latitude ?: it.latitudeDeg,
-                                        location?.longitude ?: it.longitudeDeg
-                                    ),
-                                    flight_date = flightDateID!!
-                                )
-                                images?.let {
-                                    controller.supabaseHandler.uploadImage(
-                                        ImagePacket(images, metadata)
-                                    )
-                                }
-
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                                println("Error: Couldn't upload photo")
-                            }
-                            currentMissionItem?.let { index ->
-                                if (index == numMissionItems) {
-                                    currentMissionItem = null
-                                    currentCheckpoint = null
-                                    numMissionItems = null
-                                    drone?.action?.returnToLaunch()?.blockingAwait()
-                                }
-                                currentMissionItem = index + 1
-                                currentCheckpoint = missionPlan[index]
-                                checkpointReached = false
-                                drone?.action?.setCurrentSpeed(checkpoint.speedMS)?.blockingAwait()
-                                currentCheckpoint?.let { checkpoint ->
-                                    drone?.action?.gotoLocation(
-                                        checkpoint.latitude,
-                                        checkpoint.longitude,
-                                        checkpoint.absoluteHeight,
-                                        checkpoint.yawDeg
-                                    )?.blockingAwait()
-                                }
-                            }
-                        }
-                    }
-                }
-
-
+                handleDronePosition(it)
             }, { runBlocking { reconnect() } })
             drone?.telemetry?.gpsInfo?.subscribe({
                 numSatellites = it.numSatellites
@@ -168,35 +109,62 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         }
     }
 
-    private fun haversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val radiusEarth = 6371000
-        val dLat = Math.toRadians(lat2 - lat1)
-        val dLon = Math.toRadians(lon2 - lon1)
-        val originLat = Math.toRadians(lat1)
-        val destinationLat = Math.toRadians(lat2)
-
-        val a = sin(dLat / 2).pow(2) + sin(dLon / 2).pow(2) * cos(originLat) * cos(destinationLat)
-        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return radiusEarth * c
-    }
-
-    private fun decodeFloat2D(byteArray: ByteArray, numRows: Int, numCols: Int): Array<FloatArray> {
-        val byteBuffer = ByteBuffer.wrap(byteArray)
-        byteBuffer.order(ByteOrder.LITTLE_ENDIAN) // Adjust if your data is big-endian
-
-        val floatValues = mutableListOf<Float>()
-        while (byteBuffer.hasRemaining()) {
-            floatValues.add(byteBuffer.float)
-        }
-
-        val floatArray2D = Array(numRows) { FloatArray(numCols) }
-        for (row in 0 until numRows) {
-            for (col in 0 until numCols) {
-                floatArray2D[row][col] = floatValues[row * numCols + col]
+    private fun handleDronePosition(it: Telemetry.Position) {
+        location = Location(it.longitudeDeg, it.latitudeDeg)
+        altitude = it.relativeAltitudeM
+        currentCheckpoint?.let { checkpoint ->
+            // Check if we reached a checkpoint
+            val distanceM = haversine(
+                checkpoint.latitude, checkpoint.longitude, it.latitudeDeg, it.longitudeDeg
+            )
+            if (distanceM >= checkpoint.acceptanceRadius) {
+                return@let
+            }
+            checkpointReached = true
+            CoroutineScope(Dispatchers.IO).launch {
+                checkpointReached(it, checkpoint)
             }
         }
+    }
 
-        return floatArray2D
+    private suspend fun checkpointReached(position: Telemetry.Position, checkpoint: Checkpoint) {
+        println("Checkpoint Reached")
+        sleep(500)
+
+        println("Photo")
+        val name = UUID.randomUUID().toString()
+        val images = captureImages() ?: return
+        val metadata = Image(
+            thermal_path = if (images.thermalGray != null) "${name}-thermal.png" else null,
+            rgb_path = if (images.rgbImage != null) "${name}-rgb.png" else null,
+            binary_path = if (images.thermalFloat != null) "${name}-float.bin" else null,
+            location = LatLong(
+                location?.latitude ?: position.latitudeDeg,
+                location?.longitude ?: position.longitudeDeg
+            ),
+            flight_date = flightDateID!!
+        )
+        imageQueue.send(ImagePacket(images, metadata))
+        currentMissionItem?.let { index ->
+            if (index == numMissionItems) {
+                currentMissionItem = null
+                currentCheckpoint = null
+                numMissionItems = null
+                drone?.action?.returnToLaunch()?.blockingAwait()
+            }
+            currentMissionItem = index + 1
+            currentCheckpoint = missionPlan[index]
+            checkpointReached = false
+            drone?.action?.setCurrentSpeed(checkpoint.speedMS)?.blockingAwait()
+            currentCheckpoint?.let { checkpoint ->
+                drone?.action?.gotoLocation(
+                    checkpoint.latitude,
+                    checkpoint.longitude,
+                    checkpoint.absoluteHeight,
+                    checkpoint.yawDeg
+                )?.blockingAwait()
+            }
+        }
     }
 
     fun startCommunicating() = CoroutineScope(Dispatchers.IO).launch {
@@ -207,6 +175,22 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
             println("Cant Connect!")
         }
         startReadDroneStatusJob()
+    }
+
+    suspend fun startUploadImagesJob() {
+        imageUploadJob?.cancelAndJoin()
+        imageUploadJob = CoroutineScope(Dispatchers.IO).launch {
+            imageQueue.consumeEach {
+                try {
+                    controller.supabaseHandler.uploadImage(
+                        it
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    println("Error: Couldn't upload photo")
+                }
+            }
+        }
     }
 
     suspend fun startSendDroneStatusJob() {
@@ -235,7 +219,8 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                         heading
                     )
                     if (idleCounter == 0) {
-                        sendDroneStatusToBackend(status)
+                        // Logic to send data directly to Supabase
+                        supabaseHandler.sendDroneStatus(status)
                     }
                     if (status.state == DroneState.IDLE) {
                         if (idleCounter >= 10) {
@@ -292,7 +277,8 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         this.flightDateID = flightDateID
         val acceptanceRadius = 0.5f
         val missionHeight = 15f //TODO: Load flightHeight from drone db
-        this.drone?.action?.setReturnToLaunchAltitude(missionHeight)
+        this.drone?.action?.setReturnToLaunchAltitude(missionHeight)?.blockingAwait()
+        // Reload Flight Plan
         val flightPlan = controller.supabaseHandler.getFlightPlan(flightDateID) ?: return
         missionPlan = flightPlan.checkpoints?.map {
             var height = homeAltitude ?: 0f
@@ -327,7 +313,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                     println("Raising Altitude...")
                     drone?.action?.gotoLocation(
                         it.latitude, it.longitude,
-                        altitude + 15f, 0f
+                        altitude + missionHeight, 0f
                     )?.blockingAwait()
                 }
             }
@@ -341,7 +327,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         }
     }
 
-    fun resetMission() {
+    private fun resetMission() {
         currentMissionItem = null
         numMissionItems = null
         currentCheckpoint = null
@@ -400,14 +386,9 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         }
     }
 
-    private suspend fun sendDroneStatusToBackend(data: DroneStatus) {
-        // Logic to send data directly to Supabase
-        supabaseHandler.sendDroneStatus(data)
-    }
-
     private suspend fun reconnect() {
         // Try to acquire the lock without suspending. Proceed if successful, otherwise cancel the call.
-        if (mutex.tryLock()) {
+        if (connectionRetryMutex.tryLock()) {
             try {
                 println("Connection lost. Attempting to reconnect...")
                 drone = null // Clear out the old drone object
@@ -420,7 +401,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 startReadDroneStatusJob()
             } finally {
                 // Always release the lock when done.
-                mutex.unlock()
+                connectionRetryMutex.unlock()
             }
         }
     }

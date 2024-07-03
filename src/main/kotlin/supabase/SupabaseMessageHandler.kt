@@ -107,6 +107,8 @@ class SupabaseMessageHandler(private val controller: DroneController) {
                     println("Subscribed!")
                     println("Send drone status!")
                     controller.mavsdkHandler.startSendDroneStatusJob()
+                    println("Upload images!")
+                    controller.mavsdkHandler.startUploadImagesJob()
                     println("Collect drone commands!")
                     commandFlow.collect {
                         try {
