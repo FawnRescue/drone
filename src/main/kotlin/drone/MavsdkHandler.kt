@@ -292,7 +292,8 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private suspend fun continueMission(flightDateID: String) {
         this.flightDateID = flightDateID
         val acceptanceRadius = 0.5f
-        val missionHeight = 15f
+        val missionHeight = 15f //TODO: Load flightHeight from drone db
+        this.drone?.action?.setReturnToLaunchAltitude(missionHeight)
         val flightPlan = controller.supabaseHandler.getFlightPlan(flightDateID) ?: return
         missionPlan = flightPlan.checkpoints?.map {
             var height = homeAltitude ?: 0f
