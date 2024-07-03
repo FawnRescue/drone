@@ -3,6 +3,8 @@ package supabase
 import credentials.ConfigManager
 import drone.DroneController
 import drone.DroneStatus
+import drone.ImagePacket
+import drone.ImagesData
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.gotrue.Auth
 import io.github.jan.supabase.gotrue.OtpType
@@ -161,18 +163,18 @@ class SupabaseMessageHandler(private val controller: DroneController) {
         return flightPlan
     }
 
-    suspend fun uploadImage(dataRGB: ByteArray?, dataThermal: ByteArray?, dataFloat: ByteArray?, image: Image) {
+    suspend fun uploadImage(imagesPacket: ImagePacket) {
         val bucket = supabase.storage.from("images")
-        if (dataRGB != null) {
-            bucket.upload(image.rgb_path ?: "", dataRGB, upsert = false)
+        if (imagesPacket.images.rgbImage != null) {
+            bucket.upload(imagesPacket.metadata.rgb_path ?: "", imagesPacket.images.rgbImage, upsert = false)
         }
-        if (dataThermal != null) {
-            bucket.upload(image.thermal_path ?: "", dataThermal, upsert = false)
+        if (imagesPacket.images.thermalGray != null) {
+            bucket.upload(imagesPacket.metadata.thermal_path ?: "", imagesPacket.images.thermalGray, upsert = false)
         }
-        if (dataFloat != null) {
-            bucket.upload(image.binary_path ?: "", dataFloat, upsert = false)
+        if (imagesPacket.images.thermalFloat != null) {
+            bucket.upload(imagesPacket.metadata.binary_path ?: "", imagesPacket.images.thermalFloat, upsert = false)
         }
-        supabase.postgrest.from("image").insert(image)
+        supabase.postgrest.from("image").insert(imagesPacket.metadata)
     }
 
     private fun bufferedImageToByteArray(image: BufferedImage, format: String = "PNG"): ByteArray {

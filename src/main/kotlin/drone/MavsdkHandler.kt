@@ -100,7 +100,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
 
                                 val images = captureImages()
 
-                                val imagMetaData = Image(
+                                val metadata = Image(
                                     thermal_path = if (images?.thermalGray != null) "${name}-thermal.png" else null,
                                     rgb_path = if (images?.rgbImage != null) "${name}-rgb.png" else null,
                                     binary_path = if (images?.thermalFloat != null) "${name}-float.bin" else null,
@@ -110,12 +110,11 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                                     ),
                                     flight_date = flightDateID!!
                                 )
-                                controller.supabaseHandler.uploadImage(
-                                    dataRGB = images?.rgbImage,
-                                    dataThermal = images?.thermalGray,
-                                    image = imagMetaData,
-                                    dataFloat = images?.thermalFloat
-                                )
+                                images?.let {
+                                    controller.supabaseHandler.uploadImage(
+                                        ImagePacket(images, metadata)
+                                    )
+                                }
 
                             } catch (e: Exception) {
                                 e.printStackTrace()
@@ -351,7 +350,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     }
 
 
-    private fun captureImages(hostName: String = "127.0.0.1", portNumber: Int = 15555): ImagePacket? {
+    private fun captureImages(hostName: String = "127.0.0.1", portNumber: Int = 15555): ImagesData? {
         Socket(hostName, portNumber).use { socket ->
             PrintWriter(socket.getOutputStream(), true).use { out ->
                 DataInputStream(socket.getInputStream()).use { dis ->
@@ -395,7 +394,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                         println("Failed to retrieve rgb image data")
                     }
 
-                    return ImagePacket(floatData, thermalImageData, rgbImageData)
+                    return ImagesData(floatData, thermalImageData, rgbImageData)
                 }
             }
         }
@@ -427,4 +426,3 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     }
 }
 
-data class ImagePacket(val thermalFloat: ByteArray?, val thermalGray: ByteArray?, val rgbImage: ByteArray?)
