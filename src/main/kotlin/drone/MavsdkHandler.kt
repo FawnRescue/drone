@@ -6,31 +6,21 @@ import io.mavsdk.telemetry.Telemetry
 import io.mavsdk.telemetry.Telemetry.FlightMode
 import io.mavsdk.telemetry.Telemetry.LandedState
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.sync.Mutex
-import supabase.SupabaseMessageHandler
 import supabase.domain.Command
 import supabase.domain.CommandType
-import supabase.domain.Image
 import supabase.domain.LatLong
 import utils.haversine
-import java.io.DataInputStream
-import java.io.PrintWriter
 import java.lang.Thread.sleep
-import java.net.Socket
-import java.util.*
 
 
-class MavsdkHandler(private val controller: DroneController, private val supabaseHandler: SupabaseMessageHandler) {
+class MavsdkHandler(val onCheckpointReached: (LatLong) -> Unit) {
     private val tiffPath = "output_SRTMGL1.asc"
     private var heightGrid: GridData? = null
-    private var drone: System? = null // Make 'drone' nullable
     private var statusReadJob: Job? = null
-    private var statusSendJob: Job? = null
-    private var imageUploadJob: Job? = null
     private val connectionRetryMutex = Mutex()
-    private val imageQueue: Channel<ImagePacket> = Channel()
+    private var drone: System? = null
 
     // Drone stats
     private var armed: Boolean? = null
@@ -51,10 +41,12 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     private var missionPlan: List<Checkpoint> = emptyList()
     private var currentCheckpoint: Checkpoint? = null
     private var checkpointReached: Boolean = false
-    private var flightDateID: String? = null
     private var homeAltitude: Float? = null
 
     private var idleCounter: Int = 0
+
+    private val acceptanceRadius = 0.5f
+    private val missionHeight = 15f //TODO: Load flightHeight from drone db
 
     init {
         try {
@@ -127,24 +119,14 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         }
     }
 
-    private suspend fun checkpointReached(position: Telemetry.Position, checkpoint: Checkpoint) {
+    private fun checkpointReached(position: Telemetry.Position, checkpoint: Checkpoint) {
         println("Checkpoint Reached")
-        sleep(500)
-
-        println("Photo")
-        val name = UUID.randomUUID().toString()
-        val images = captureImages() ?: return
-        val metadata = Image(
-            thermal_path = if (images.thermalGray != null) "${name}-thermal.png" else null,
-            rgb_path = if (images.rgbImage != null) "${name}-rgb.png" else null,
-            binary_path = if (images.thermalFloat != null) "${name}-float.bin" else null,
-            location = LatLong(
+        onCheckpointReached(
+            LatLong(
                 location?.latitude ?: position.latitudeDeg,
                 location?.longitude ?: position.longitudeDeg
-            ),
-            flight_date = flightDateID!!
+            )
         )
-        imageQueue.send(ImagePacket(images, metadata))
         currentMissionItem?.let { index ->
             if (index == numMissionItems) {
                 currentMissionItem = null
@@ -167,7 +149,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         }
     }
 
-    fun startCommunicating() = CoroutineScope(Dispatchers.IO).launch {
+    suspend fun connectToDrone() {
         println("Connecting to ${ConfigManager.getDronePath()}:${ConfigManager.getDronePort()}")
         try {
             drone = System(ConfigManager.getDronePath(), ConfigManager.getDronePort())
@@ -177,65 +159,46 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         startReadDroneStatusJob()
     }
 
-    suspend fun startUploadImagesJob() {
-        imageUploadJob?.cancelAndJoin()
-        imageUploadJob = CoroutineScope(Dispatchers.IO).launch {
-            imageQueue.consumeEach {
-                try {
-                    controller.supabaseHandler.uploadImage(
-                        it
-                    )
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    println("Error: Couldn't upload photo")
-                }
-            }
-        }
-    }
-
-    suspend fun startSendDroneStatusJob() {
-        statusSendJob?.cancelAndJoin()
-        statusSendJob = CoroutineScope(Dispatchers.IO).launch {
-            while (isActive) {
-                try {
-                    val status = DroneStatus(
-                        state = when (armed) {
-                            true -> when (inAir) {
-                                true -> DroneState.IN_FLIGHT
-                                false -> DroneState.ARMED
-                                null -> DroneState.NOT_CONNECTED
-                            }
-
-                            false -> DroneState.IDLE
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun produceStatusUpdates() = CoroutineScope(Dispatchers.IO).produce<DroneStatus> {
+        while (isActive) {
+            try {
+                val status = DroneStatus(
+                    state = when (armed) {
+                        true -> when (inAir) {
+                            true -> DroneState.IN_FLIGHT
+                            false -> DroneState.ARMED
                             null -> DroneState.NOT_CONNECTED
-                        },
-                        battery,
-                        location,
-                        homeLocation,
-                        altitude,
-                        numSatellites,
-                        currentMissionItem,
-                        numMissionItems,
-                        heading
-                    )
-                    if (idleCounter == 0) {
-                        // Logic to send data directly to Supabase
-                        supabaseHandler.sendDroneStatus(status)
-                    }
-                    if (status.state == DroneState.IDLE) {
-                        if (idleCounter >= 10) {
-                            idleCounter = 0
-                        } else {
-                            idleCounter++
                         }
-                    } else {
-                        idleCounter = 0
-                    }
-                    sleep(300)
-                } catch (e: Exception) {
-                    println("Error: Cant send status to Supabase!")
-                    sleep(500)
+
+                        false -> DroneState.IDLE
+                        null -> DroneState.NOT_CONNECTED
+                    },
+                    battery,
+                    location,
+                    homeLocation,
+                    altitude,
+                    numSatellites,
+                    currentMissionItem,
+                    numMissionItems,
+                    heading
+                )
+                if (idleCounter == 0) {
+                    send(status)
                 }
+                if (status.state == DroneState.IDLE) {
+                    if (idleCounter >= 10) {
+                        idleCounter = 0
+                    } else {
+                        idleCounter++
+                    }
+                } else {
+                    idleCounter = 0
+                }
+                sleep(300)
+            } catch (e: Exception) {
+                println("Error: Cant send status to Supabase!")
+                sleep(500)
             }
         }
     }
@@ -265,7 +228,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                     drone?.action?.land()?.blockingAwait()
                 }
 
-                CommandType.CONTINUE -> CoroutineScope(Dispatchers.IO).launch { continueMission(command.context) }
+                CommandType.CONTINUE -> TODO()
             }
         } catch (e: Exception) {
             println("Error executing Command: $command,\n Error: $e")
@@ -273,14 +236,10 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
     }
 
 
-    private suspend fun continueMission(flightDateID: String) {
-        this.flightDateID = flightDateID
-        val acceptanceRadius = 0.5f
-        val missionHeight = 15f //TODO: Load flightHeight from drone db
+    fun updateCheckpoints(checkpoints: List<LatLong>) {
         this.drone?.action?.setReturnToLaunchAltitude(missionHeight)?.blockingAwait()
         // Reload Flight Plan
-        val flightPlan = controller.supabaseHandler.getFlightPlan(flightDateID) ?: return
-        missionPlan = flightPlan.checkpoints?.map {
+        missionPlan = checkpoints.map {
             var height = homeAltitude ?: 0f
             heightGrid?.let { grid ->
                 try {
@@ -300,7 +259,7 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
                 speedMS = 10f,
                 acceptanceRadius = acceptanceRadius
             )
-        } ?: emptyList()
+        }
 
         currentMissionItem = 0
         numMissionItems = missionPlan.size
@@ -335,56 +294,6 @@ class MavsdkHandler(private val controller: DroneController, private val supabas
         missionPlan = emptyList()
     }
 
-
-    private fun captureImages(hostName: String = "127.0.0.1", portNumber: Int = 15555): ImagesData? {
-        Socket(hostName, portNumber).use { socket ->
-            PrintWriter(socket.getOutputStream(), true).use { out ->
-                DataInputStream(socket.getInputStream()).use { dis ->
-                    out.print("capture")
-                    out.flush()
-                    val status = dis.readInt()
-                    if (status != 1) {
-                        return null
-                    }
-
-                    var floatData: ByteArray? = null
-                    try {
-                        out.print("transferFloat")
-                        out.flush()
-                        val floatSize = dis.readInt()
-                        floatData = ByteArray(floatSize)
-                        dis.readFully(floatData)
-                    } catch (_: Exception) {
-                        println("Failed to retrieve Float data")
-                    }
-
-                    var thermalImageData: ByteArray? = null
-                    try {
-                        out.print("transferThermal")
-                        out.flush()
-                        val thermalImageSize = dis.readInt()
-                        thermalImageData = ByteArray(thermalImageSize)
-                        dis.readFully(thermalImageData)
-                    } catch (_: Exception) {
-                        println("Failed to retrieve thermal image data")
-                    }
-
-                    var rgbImageData: ByteArray? = null
-                    try {
-                        out.print("transferRGB")
-                        out.flush()
-                        val rgbImageSize = dis.readInt()
-                        rgbImageData = ByteArray(rgbImageSize)
-                        dis.readFully(rgbImageData)
-                    } catch (_: Exception) {
-                        println("Failed to retrieve rgb image data")
-                    }
-
-                    return ImagesData(floatData, thermalImageData, rgbImageData)
-                }
-            }
-        }
-    }
 
     private suspend fun reconnect() {
         // Try to acquire the lock without suspending. Proceed if successful, otherwise cancel the call.

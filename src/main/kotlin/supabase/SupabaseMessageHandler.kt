@@ -1,98 +1,37 @@
 package supabase
 
-import credentials.ConfigManager
-import drone.DroneController
 import drone.DroneStatus
 import drone.ImagePacket
-import drone.ImagesData
-import io.github.jan.supabase.createSupabaseClient
-import io.github.jan.supabase.gotrue.Auth
-import io.github.jan.supabase.gotrue.OtpType
+import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.gotrue.auth
-import io.github.jan.supabase.gotrue.providers.builtin.Email
-import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.realtime.*
-import io.github.jan.supabase.storage.Storage
 import io.github.jan.supabase.storage.storage
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import supabase.domain.*
-import java.awt.image.BufferedImage
-import java.io.ByteArrayOutputStream
 import java.io.File
-import javax.imageio.ImageIO
-import kotlin.time.Duration.Companion.seconds
 
-class SupabaseMessageHandler(private val controller: DroneController) {
-    private val supabase = createSupabaseClient(
-        supabaseUrl = ConfigManager.get("supabase_url") ?: "",
-        supabaseKey = ConfigManager.get("supabase_token") ?: ""
-    ) {
-        install(Realtime) {
-            reconnectDelay = 5.seconds
-        }
-        install(Postgrest)
-        install(Auth)
-        install(Storage)
-    } // TODO Move to constructor
-    private val tokenFile = File("token")
-    private lateinit var token: String
-    lateinit var channel: RealtimeChannel
+class SupabaseMessageHandler(
+    private val token: String,
+    private val supabase: SupabaseClient,
+    val onConnected: () -> Unit,
+    val onCommand: (Command) -> Unit
+) {
+
+
+    val channel: RealtimeChannel = supabase.channel(token)
     var isSubscribed = false
-    val authFlow = supabase.auth.sessionStatus
 
-    suspend fun login(otp: String, email: String, token: String) {
-        this.token = token
-        supabase.auth.verifyEmailOtp(type = OtpType.Email.MAGIC_LINK, email = email, token = otp)
-    }
 
-    suspend fun debugLogin(debugPassword: String, debugEmail: String, token: String) {
-        this.token = token
-        supabase.auth.signInWith(Email) {
-            email = debugEmail
-            password = debugPassword
-        }
-    }
-
-    suspend fun setup(): Boolean {
-        if (!tokenFile.exists()) {
-            tokenFile.writeText(token)
-        } else {
-            token = tokenFile.readText()
-        }
-        if (!checkDatabase()) {
-            return false
-        }
-
-        channel = supabase.channel(token)
-        return true
-    }
-
-    private suspend fun checkDatabase(): Boolean {
-        val aircraft: List<Aircraft> = supabase.from("aircraft").select {
-            filter {
-                eq("token", token)
-            }
-        }.decodeList<Aircraft>()
-        if (aircraft.isEmpty()) {
-            supabase.from("aircraft")
-                .insert(InsertableAircraft(name = "Aircraft-${token.subSequence(0, 4)}", token = token))
-        } else if (aircraft.first().deleted) {
-            supabase.auth.signOut()
-            tokenFile.delete()
-            return false
-        }
-        return true
-    }
-
-    fun startListening() = CoroutineScope(Dispatchers.IO).launch {
+    suspend fun startListening() {
         println("Subscribing...")
-        val commandFlow = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
-            table = "command"
-        }
         channel.subscribe(blockUntilSubscribed = true)
         supabase.realtime.status.collect {
             when (it) {
@@ -105,35 +44,39 @@ class SupabaseMessageHandler(private val controller: DroneController) {
                 Realtime.Status.CONNECTED -> {
                     isSubscribed = true
                     println("Subscribed!")
-                    println("Send drone status!")
-                    controller.mavsdkHandler.startSendDroneStatusJob()
-                    println("Upload images!")
-                    controller.mavsdkHandler.startUploadImagesJob()
-                    println("Collect drone commands!")
-                    commandFlow.collect {
-                        try {
-                            val command = Json.decodeFromJsonElement<Command>(it.record)
-                            if (command.aircraft != token) {
-                                return@collect
-                            }
-                            if (command.status != CommandStatus.PENDING) {
-                                return@collect
-                            }
-                            println("Received command: ${command.command}")
-                            controller.sendCommandToDrone(command)
-                            supabase.from("command").update({
-                                set("status", CommandStatus.EXECUTED)
-                            }
-                            ) {
-                                filter {
-                                    eq("id", command.id)
-                                }
-                            }
-                        } catch (e: Exception) {
-                            println("Error executing command: ${it.record}")
-                        }
+                    onConnected()
+                    collectCommands()
+                }
+            }
+        }
+    }
+
+    private suspend fun collectCommands() {
+        val commandFlow = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+            table = "command"
+        }
+        println("Collect drone commands!")
+        commandFlow.collect {
+            try {
+                val command = Json.decodeFromJsonElement<Command>(it.record)
+                if (command.aircraft != token) {
+                    return@collect
+                }
+                if (command.status != CommandStatus.PENDING) {
+                    return@collect
+                }
+                println("Received command: ${command.command}")
+                onCommand(command)
+                supabase.from("command").update({
+                    set("status", CommandStatus.EXECUTED)
+                }
+                ) {
+                    filter {
+                        eq("id", command.id)
                     }
                 }
+            } catch (e: Exception) {
+                println("Error executing command: ${it.record}")
             }
         }
     }
@@ -177,15 +120,6 @@ class SupabaseMessageHandler(private val controller: DroneController) {
             bucket.upload(imagesPacket.metadata.binary_path ?: "", imagesPacket.images.thermalFloat, upsert = false)
         }
         supabase.postgrest.from("image").insert(imagesPacket.metadata)
-    }
-
-    private fun bufferedImageToByteArray(image: BufferedImage, format: String = "PNG"): ByteArray {
-        ByteArrayOutputStream().use { outputStream ->
-            // Write the buffered image to the output stream as PNG (or any other format)
-            ImageIO.write(image, format, outputStream)
-            // Convert the output stream to a byte array and return it
-            return outputStream.toByteArray()
-        }
     }
 
     suspend inline fun <reified T : Any> sendData(event: String, data: T) {

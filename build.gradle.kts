@@ -32,6 +32,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
     implementation("com.google.code.gson:gson:2.8.9")
     implementation("com.github.sarxos:webcam-capture:0.3.12")
+    implementation(kotlin("test"))
+    implementation(kotlin("test-junit"))
+    implementation("io.mockk:mockk:1.13.11")
+
 }
 
 tasks.test {

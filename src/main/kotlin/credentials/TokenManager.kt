@@ -1,12 +1,10 @@
 package credentials
 
-import java.io.File
-import com.google.gson.Gson
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
 class TokenManager {
-    fun fetchCredentialsFromNode(): Credentials? {
+    fun fetchCredentialsFromBT(): Credentials? {
         try {
             val command = listOf("sudo", "node", "/home/drone/bluetooth/bluetooth.js")
             println("Executing command: $command")
